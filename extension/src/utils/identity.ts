@@ -19,6 +19,7 @@ const PALETTE = [
 ];
 
 export interface Identity {
+  id: string;
   name: string;
   color: string;
   /** True when the user has never explicitly chosen a name. */
@@ -32,11 +33,17 @@ export async function getIdentity(context: vscode.ExtensionContext): Promise<Ide
   let identity = context.globalState.get<Identity>(IDENT_KEY);
   const configured = vscode.workspace.getConfiguration('devchat').get<string>('nickname');
   const hasSetName = context.globalState.get<boolean>(HAS_SET_NAME_KEY) ?? false;
+  const persistentId = identity?.id || `usr_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36).slice(-4)}`;
+
   if (!identity) {
     identity = {
+      id: persistentId,
       name: configured || `${pick(ADJECTIVES)}-${pick(ANIMALS)}`,
       color: pick(PALETTE),
     };
+    await context.globalState.update(IDENT_KEY, identity);
+  } else if (!identity.id) {
+    identity = { ...identity, id: persistentId };
     await context.globalState.update(IDENT_KEY, identity);
   }
   return { ...identity, isFirstRun: !hasSetName && !configured };

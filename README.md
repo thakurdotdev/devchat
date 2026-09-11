@@ -46,10 +46,9 @@ share the invite. Teammates **Join Room** with the code (or click a
 
 ### Configuration
 
-| Setting             | Default                 | Meaning                                           |
-| ------------------- | ----------------------- | ------------------------------------------------- |
-| `devchat.serverUrl` | `http://localhost:3030` | DevChat server base URL                           |
-| `devchat.nickname`  | _(auto)_                | Nickname override (auto-generated: `swift-otter`) |
+| Setting            | Default                 | Meaning                                           |
+| ------------------ | ----------------------- | ------------------------------------------------- |
+| `devchat.nickname` | _(auto)_                | Nickname override (auto-generated: `swift-otter`) |
 
 ### Server env vars
 

@@ -41,6 +41,11 @@ export function activate(context: vscode.ExtensionContext): void {
         }
       },
     }),
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration('devchat.serverUrl')) {
+        chatProvider.onConfigChanged();
+      }
+    }),
   );
 
   // Restore session (room code persists in workspaceState)

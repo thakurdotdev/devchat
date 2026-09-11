@@ -55,11 +55,29 @@ export class RoomHub {
     return conn;
   }
 
-  async join(conn: Conn, code: string, name: string, color: string): Promise<ErrorPayloadOr<Welcome>> {
+  async join(conn: Conn, code: string, name: string, color: string, userId?: string): Promise<ErrorPayloadOr<Welcome>> {
     const room = await this.store.getRoom(code);
     if (!room) {
       return { error: true, code: ERROR_CODES.ROOM_NOT_FOUND, message: `Room ${code} does not exist (or expired)` };
     }
+
+    const memberId = (userId && userId.trim()) ? userId.trim().slice(0, 48) : conn.id;
+
+    // If another connection with the same memberId is already present in this room
+    // (e.g. client reloaded or reconnected before dead socket heartbeat clean-up),
+    // cleanly close the old stale connection.
+    for (const existingConn of this.connectionsIn(code)) {
+      if (existingConn.member?.id === memberId && existingConn.id !== conn.id) {
+        try {
+          existingConn.ws.close(1000, 'reconnected');
+        } catch {
+          /* ignore */
+        }
+        this.conns.delete(existingConn.id);
+        this.roomConns.get(code)?.delete(existingConn.id);
+      }
+    }
+
     const members = await this.store.listMembers(code);
     const onlineIds = new Set(this.onlineMemberIds(code));
     const present = members.filter((m) => onlineIds.has(m.id));
@@ -70,7 +88,7 @@ export class RoomHub {
     }
 
     const member: Member = {
-      id: conn.id, // server assigns unique memberId per connection
+      id: memberId,
       name,
       color,
       joinedAt: Date.now(),

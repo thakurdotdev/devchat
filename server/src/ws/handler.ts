@@ -128,11 +128,12 @@ export function wireWebSocket(app: WsCapableApp, store: RoomStore, config: Confi
       // ---- handshake: first frame must be join (or fall back to query params) ----
       if (!conn.member) {
         const query = (ws as unknown as RawWs).data?.query ?? {};
+        const queryUserId = query.userId;
         if (Value.Check(JoinEvent, frame)) {
-          const p = frame as { name: string; color: string };
-          await doJoin(conn, query.room ?? '', p.name, p.color);
+          const p = frame as { name: string; color: string; userId?: string };
+          await doJoin(conn, query.room ?? '', p.name, p.color, p.userId || queryUserId);
         } else if (query.room && query.name) {
-          await doJoin(conn, query.room, query.name, query.color || '#7c5cff');
+          await doJoin(conn, query.room, query.name, query.color || '#7c5cff', queryUserId);
         } else {
           sendError(conn, ERROR_CODES.INVALID, 'First frame must be a join event (or provide ?room&name query params)');
         }
@@ -212,9 +213,9 @@ export function wireWebSocket(app: WsCapableApp, store: RoomStore, config: Confi
 
   // ---------------- helpers ----------------
 
-  async function doJoin(conn: Conn, room: string, name: string, color: string) {
+  async function doJoin(conn: Conn, room: string, name: string, color: string, userId?: string) {
     if (!room) return sendError(conn, ERROR_CODES.INVALID, 'Missing room code');
-    const result = await hub.join(conn, room.trim().toUpperCase(), name.trim().slice(0, 32), color);
+    const result = await hub.join(conn, room.trim().toUpperCase(), name.trim().slice(0, 32), color, userId);
     if (result.error) sendError(conn, result.code, result.message);
   }
 

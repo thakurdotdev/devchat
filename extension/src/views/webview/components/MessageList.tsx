@@ -43,6 +43,7 @@ export function MessageList({ messages, youId, typingIds, memberName, onReact }:
             you={m.memberId === youId}
             youId={youId}
             showAuthor={!isConsecutive}
+            memberName={memberName}
             onReact={onReact}
           />
         );

@@ -22,6 +22,7 @@ interface VsCodeApi {
 declare function acquireVsCodeApi(): VsCodeApi;
 
 interface Identity {
+  id?: string;
   name: string;
   color: string;
   isFirstRun?: boolean;
@@ -63,6 +64,10 @@ function App() {
   identityRef.current = identity;
   const lastTypingRef = useRef(0);
   const typingTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const youIdRef = useRef<string | null>(youId);
+  youIdRef.current = youId;
+  const membersRef = useRef<Member[]>(members);
+  membersRef.current = members;
 
   const toast = useCallback((kind: Toast['kind'], message: string) => {
     const id = Math.random();
@@ -113,28 +118,43 @@ function App() {
       onFrame: (frame) => {
         switch (frame.type) {
           case 'welcome': {
-            setYouId(String(frame.you));
-            setMembers((frame.members as Member[]) ?? []);
+            const you = String(frame.you);
+            setYouId(you);
+            youIdRef.current = you;
+            const initMembers = (frame.members as Member[]) ?? [];
+            setMembers(initMembers);
+            membersRef.current = initMembers;
             setExpiresAt(Number(frame.expiresAt) || null);
             mergeMessages((frame.recentMessages as ChatMessage[]) ?? []);
             break;
           }
           case 'member.joined':
             if (frame.member) {
-              setMembers((prev) => [...prev.filter((m) => m.id !== (frame.member as Member).id), frame.member as Member]);
+              const joinedMember = frame.member as Member;
+              setMembers((prev) => [...prev.filter((m) => m.id !== joinedMember.id), joinedMember]);
               if (frame.message) mergeMessages([frame.message as ChatMessage]);
+              vscode.postMessage({ cmd: 'memberEvent', kind: 'joined', memberName: joinedMember.name });
             }
             break;
-          case 'member.left':
+          case 'member.left': {
+            const leftMember = membersRef.current.find((m) => m.id === frame.memberId);
+            const leftName = leftMember?.name || (frame.message as ChatMessage | undefined)?.name || 'Someone';
             setMembers((prev) => prev.filter((m) => m.id !== frame.memberId));
             setTypingIds((prev) => prev.filter((id2) => id2 !== frame.memberId));
             if (frame.message) mergeMessages([frame.message as ChatMessage]);
+            vscode.postMessage({ cmd: 'memberEvent', kind: 'left', memberName: leftName });
             break;
+          }
           case 'message':
           case 'gif':
-          case 'audio':
-            mergeMessages([frame as unknown as ChatMessage]);
+          case 'audio': {
+            const incomingMsg = frame as unknown as ChatMessage;
+            mergeMessages([incomingMsg]);
+            if (incomingMsg.memberId !== youIdRef.current) {
+              vscode.postMessage({ cmd: 'incomingMessage', message: incomingMsg });
+            }
             break;
+          }
           case 'typing':
             markTyping(String(frame.memberId));
             break;
@@ -255,8 +275,15 @@ function App() {
   };
 
   const memberName = useCallback(
-    (id: string) => members.find((m) => m.id === id)?.name ?? 'someone',
-    [members],
+    (id: string) => {
+      if (id === youId && identity.name) return identity.name;
+      const found = members.find((m) => m.id === id);
+      if (found) return found.name;
+      const msgAuthor = messages.find((m) => m.memberId === id);
+      if (msgAuthor) return msgAuthor.name;
+      return 'someone';
+    },
+    [members, messages, youId, identity.name],
   );
 
   if (!ready) {

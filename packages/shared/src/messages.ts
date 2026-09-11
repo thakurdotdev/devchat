@@ -14,6 +14,7 @@ export const JoinEvent = t.Object({
   type: t.Literal('join'),
   name: t.String({ minLength: 1, maxLength: 32 }),
   color: hexColor,
+  userId: t.Optional(t.String({ maxLength: 64 })),
 });
 
 export const MessageEvent = t.Object({

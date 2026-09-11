@@ -1,8 +1,11 @@
+../**
+**/.git/**
+**/.env*
+.env*
+.vscode/**
 src/**
 node_modules/**
-esbuild.js
 tsconfig.json
-.vscode/**
-.env*
+esbuild.js
 **/*.map
 **/.DS_Store

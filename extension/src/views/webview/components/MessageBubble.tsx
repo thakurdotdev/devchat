@@ -9,10 +9,11 @@ interface Props {
   you: boolean;
   youId: string | null;
   showAuthor?: boolean;
+  memberName?: (id: string) => string;
   onReact: (messageId: string, emoji: string) => void;
 }
 
-export function MessageBubble({ message: m, you, youId, showAuthor = true, onReact }: Props) {
+export function MessageBubble({ message: m, you, youId, showAuthor = true, memberName, onReact }: Props) {
   const [hover, setHover] = useState(false);
 
   if (m.kind === 'system') {
@@ -53,16 +54,22 @@ export function MessageBubble({ message: m, you, youId, showAuthor = true, onRea
 
         {m.reactions && Object.keys(m.reactions).length > 0 && (
           <div class="reactions">
-            {Object.entries(m.reactions).map(([emoji, actors]) => (
-              <button
-                key={emoji}
-                class={`reaction ${youId && actors.includes(youId) ? 'active' : ''}`}
-                title={actors.join(', ')}
-                onClick={() => onReact(m.id, emoji)}
-              >
-                {emoji} {actors.length}
-              </button>
-            ))}
+            {Object.entries(m.reactions).map(([emoji, actors]) => {
+              const names = actors.map((id) => {
+                const name = memberName ? memberName(id) : id;
+                return id === youId ? `${name} (you)` : name;
+              });
+              return (
+                <button
+                  key={emoji}
+                  class={`reaction ${youId && actors.includes(youId) ? 'active' : ''}`}
+                  title={names.join(', ')}
+                  onClick={() => onReact(m.id, emoji)}
+                >
+                  {emoji} {actors.length}
+                </button>
+              );
+            })}
           </div>
         )}
       </div>

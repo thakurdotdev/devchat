@@ -4,6 +4,10 @@
   "description": "Temporary, no-auth chat rooms for VS Code — text, GIFs and audio clips in real time.",
   "version": "0.1.0",
   "publisher": "devchat",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/thakurdotdev/devchat"
+  },
   "license": "MIT",
   "engines": {
     "vscode": "^1.85.0"
@@ -62,15 +66,36 @@
     "configuration": {
       "title": "DevChat",
       "properties": {
-        "devchat.serverUrl": {
-          "type": "string",
-          "default": "http://localhost:3030",
-          "description": "DevChat server base URL (http(s) — the webview derives the WS URL from it)"
-        },
+
         "devchat.nickname": {
           "type": "string",
           "default": "",
           "description": "Your chat nickname (auto-generated if empty)"
+        },
+        "devchat.notifications.mode": {
+          "type": "string",
+          "enum": [
+            "all",
+            "mentions",
+            "never"
+          ],
+          "default": "all",
+          "description": "When to show VS Code toast notifications for incoming chat messages ('all': every message when chat is in background, 'mentions': only when your nickname or @everyone is tagged, 'never': disable toasts)."
+        },
+        "devchat.notifications.badge": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show an unread message badge count on the DevChat activity bar icon when the chat is not focused or visible."
+        },
+        "devchat.notifications.notifyWhenFocused": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show toast notifications even when the DevChat sidebar is currently visible."
+        },
+        "devchat.notifications.roomEvents": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show toast notifications when teammates join or leave the room."
         }
       }
     }
