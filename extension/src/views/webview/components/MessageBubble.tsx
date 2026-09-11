@@ -1,5 +1,6 @@
 import { useState } from 'preact/hooks';
 import type { ChatMessage } from '@devchat/shared';
+import { AudioPlayer } from './AudioPlayer';
 
 const QUICK_EMOJI = ['👍', '🚀', '😂', '❤️', '🎉', '👀'];
 
@@ -7,10 +8,11 @@ interface Props {
   message: ChatMessage;
   you: boolean;
   youId: string | null;
+  showAuthor?: boolean;
   onReact: (messageId: string, emoji: string) => void;
 }
 
-export function MessageBubble({ message: m, you, youId, onReact }: Props) {
+export function MessageBubble({ message: m, you, youId, showAuthor = true, onReact }: Props) {
   const [hover, setHover] = useState(false);
 
   if (m.kind === 'system') {
@@ -23,15 +25,17 @@ export function MessageBubble({ message: m, you, youId, onReact }: Props) {
 
   return (
     <div
-      class={`bubble-row ${you ? 'mine' : ''}`}
+      class={`bubble-row ${you ? 'mine' : ''} ${!showAuthor ? 'consecutive' : ''}`}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >
-      <div class="bubble" style={`border-left-color:${m.color}`}>
-        <div class="bubble-head">
-          <span class="author" style={`color:${m.color}`}>{m.name}</span>
-          <span class="time">{fmtTime(m.createdAt)}</span>
-        </div>
+      <div class="bubble">
+        {showAuthor && (
+          <div class="bubble-head">
+            <span class="author" style={`color:${m.color}`}>{m.name}</span>
+            <span class="time">{fmtTime(m.createdAt)}</span>
+          </div>
+        )}
 
         {m.kind === 'text' && <div class="text">{m.text}</div>}
 
@@ -43,8 +47,7 @@ export function MessageBubble({ message: m, you, youId, onReact }: Props) {
 
         {m.kind === 'audio' && m.media && (
           <div class="audio-msg">
-            <span class="audio-title">🎧 {m.media.title}</span>
-            <audio controls preload="none" src={m.media.url} />
+            <AudioPlayer src={m.media.url} title={m.media.title} />
           </div>
         )}
 
@@ -64,10 +67,19 @@ export function MessageBubble({ message: m, you, youId, onReact }: Props) {
         )}
       </div>
 
-      {(hover || Object.keys(m.reactions ?? {}).length > 0) && (
+      {hover && (
         <div class="quick-react">
           {QUICK_EMOJI.slice(0, 4).map((e) => (
-            <button key={e} onClick={() => onReact(m.id, e)}>{e}</button>
+            <button
+              key={e}
+              onClick={(ev) => {
+                ev.stopPropagation();
+                onReact(m.id, e);
+                setHover(false);
+              }}
+            >
+              {e}
+            </button>
           ))}
         </div>
       )}

@@ -1,0 +1,45 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "compile:watch",
+      "type": "shell",
+      "command": "bun run compile:watch",
+      "options": {
+        "cwd": "${workspaceFolder}/extension"
+      },
+      "isBackground": true,
+      "problemMatcher": [
+        {
+          "owner": "esbuild",
+          "fileLocation": [
+            "relative",
+            "${workspaceFolder}/extension"
+          ],
+          "pattern": {
+            "regexp": "^✘ \\[ERROR\\] (.+)",
+            "message": 1
+          },
+          "background": {
+            "activeOnStart": true,
+            "beginsPattern": "^\\[watch\\]",
+            "endsPattern": "^\\[esbuild\\] watching"
+          }
+        }
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    },
+    {
+      "type": "npm",
+      "script": "build",
+      "path": "extension",
+      "group": "build",
+      "problemMatcher": [],
+      "label": "npm: build - extension",
+      "detail": "node esbuild.js --production"
+    }
+  ]
+}

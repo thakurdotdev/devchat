@@ -21,13 +21,17 @@ const PALETTE = [
 export interface Identity {
   name: string;
   color: string;
+  /** True when the user has never explicitly chosen a name. */
+  isFirstRun?: boolean;
 }
 
 const IDENT_KEY = 'devchat.identity';
+const HAS_SET_NAME_KEY = 'devchat.hasSetName';
 
 export async function getIdentity(context: vscode.ExtensionContext): Promise<Identity> {
   let identity = context.globalState.get<Identity>(IDENT_KEY);
   const configured = vscode.workspace.getConfiguration('devchat').get<string>('nickname');
+  const hasSetName = context.globalState.get<boolean>(HAS_SET_NAME_KEY) ?? false;
   if (!identity) {
     identity = {
       name: configured || `${pick(ADJECTIVES)}-${pick(ANIMALS)}`,
@@ -35,11 +39,13 @@ export async function getIdentity(context: vscode.ExtensionContext): Promise<Ide
     };
     await context.globalState.update(IDENT_KEY, identity);
   }
-  return identity;
+  return { ...identity, isFirstRun: !hasSetName && !configured };
 }
 
 export async function setIdentity(context: vscode.ExtensionContext, identity: Identity): Promise<void> {
-  await context.globalState.update(IDENT_KEY, identity);
+  const { isFirstRun: _, ...stored } = identity;
+  await context.globalState.update(IDENT_KEY, stored);
+  await context.globalState.update(HAS_SET_NAME_KEY, true);
 }
 
 function pick<T>(arr: T[]): T {

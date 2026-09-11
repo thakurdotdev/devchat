@@ -24,6 +24,7 @@ declare function acquireVsCodeApi(): VsCodeApi;
 interface Identity {
   name: string;
   color: string;
+  isFirstRun?: boolean;
 }
 
 interface Toast {
@@ -40,6 +41,7 @@ function App() {
   const [ready, setReady] = useState(false);
   const [serverUrl, setServerUrl] = useState('');
   const [identity, setIdentity] = useState<Identity>({ name: '…', color: '#7c5cff' });
+  const [isFirstRun, setIsFirstRun] = useState(false);
   const [roomCode, setRoomCode] = useState<string | null>(null);
   const [status, setStatus] = useState<SocketStatus>('disconnected');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -176,6 +178,7 @@ function App() {
             setServerUrl(msg.serverUrl);
           }
           setIdentity(msg.identity);
+          setIsFirstRun(!!msg.identity?.isFirstRun);
           setRoomCode(msg.roomCode);
           if (msg.roomCode && msg.serverUrl) connect(msg.serverUrl, msg.roomCode, msg.identity);
           break;
@@ -197,6 +200,7 @@ function App() {
           break;
         case 'identity':
           setIdentity(msg.identity);
+          setIsFirstRun(false);
           // reconnect under the new identity if already in a room
           if (roomCodeRef.current && serverUrlRef.current) {
             connect(serverUrlRef.current, roomCodeRef.current, msg.identity);
@@ -259,17 +263,32 @@ function App() {
     return <div class="boot">DevChat loading…</div>;
   }
 
+  // ---- Phase 1: First-run nickname prompt ----
+  if (isFirstRun) {
+    return <NicknameScreen identity={identity} vscode={vscode} onDone={() => setIsFirstRun(false)} />;
+  }
+
   if (!roomCode) {
     return (
       <div class="welcome">
-        <div class="welcome-icon">💬</div>
-        <h3>DevChat</h3>
-        <p>Temporary, no-auth chat rooms for your team — right inside VS Code.</p>
-        <button class="primary-btn" onClick={() => vscode.postMessage({ cmd: 'createRoom' })}>
-          Create a room
-        </button>
-        <button onClick={() => vscode.postMessage({ cmd: 'showJoin' })}>Join with code</button>
-        <p class="hint">You are chatting as <b style={`color:${identity.color}`}>{identity.name}</b></p>
+        <div class="welcome-header">
+          <span class="codicon codicon-comment-discussion welcome-icon" />
+          <h3>DevChat</h3>
+        </div>
+        <p class="welcome-desc">Temporary, no-auth chat rooms for your team — right inside VS Code.</p>
+        <div class="welcome-actions">
+          <button class="primary-btn" onClick={() => vscode.postMessage({ cmd: 'createRoom' })}>
+            <span class="codicon codicon-add" /> Create a room
+          </button>
+          <button class="secondary-btn" onClick={() => vscode.postMessage({ cmd: 'showJoin' })}>
+            <span class="codicon codicon-plug" /> Join with code
+          </button>
+        </div>
+        <p class="hint">
+          Chatting as <b style={`color:${identity.color}`}>{identity.name}</b>
+          {' · '}
+          <button class="link-btn" onClick={() => vscode.postMessage({ cmd: 'setNickname' })}>change</button>
+        </p>
       </div>
     );
   }
@@ -284,25 +303,49 @@ function App() {
         <span class="room-code" title="Room code">{roomCode}</span>
         <span class="spacer" />
         {minutesLeft !== null && status === 'connected' && (
-          <span class="expiry" title="Room self-destructs at expiry">⏳ {minutesLeft}m</span>
+          <span class="expiry" title="Room self-destructs at expiry">
+            <span class="codicon codicon-clock" /> {minutesLeft}m
+          </span>
         )}
-        <button class="icon-btn" title="Members" onClick={() => setShowMembers((v) => !v)}>👥 {members.length}</button>
-        <button class="icon-btn" title="Copy invite link" onClick={() => vscode.postMessage({ cmd: 'copyInvite' })}>🔗</button>
-        <button class="icon-btn" title="Leave room" onClick={() => vscode.postMessage({ cmd: 'leave' })}>✕</button>
+        <button class="icon-btn" title="Members" onClick={() => setShowMembers((v) => !v)}>
+          <span class="codicon codicon-organization" /> {members.length}
+        </button>
+        <button class="icon-btn" title="Copy invite link" onClick={() => vscode.postMessage({ cmd: 'copyInvite' })}>
+          <span class="codicon codicon-link" />
+        </button>
+        <button class="icon-btn" title="Leave room" onClick={() => vscode.postMessage({ cmd: 'leave' })}>
+          <span class="codicon codicon-close" />
+        </button>
       </div>
 
       {showMembers && <MembersPanel members={members} onEditNickname={() => vscode.postMessage({ cmd: 'setNickname' })} />}
 
       <MessageList messages={messages} youId={youId} typingIds={typingIds} memberName={memberName} onReact={react} />
 
-      {picker === 'gif' && <GifPicker serverUrl={serverUrl} onSend={sendGif} onError={(m) => toast('error', m)} />}
-      {picker === 'audio' && <AudioPicker serverUrl={serverUrl} onSend={sendAudio} onError={(m) => toast('error', m)} />}
+      {picker === 'gif' && (
+        <GifPicker
+          serverUrl={serverUrl}
+          onSend={sendGif}
+          onClose={() => setPicker(null)}
+          onError={(m) => toast('error', m)}
+        />
+      )}
+      {picker === 'audio' && (
+        <AudioPicker
+          serverUrl={serverUrl}
+          onSend={sendAudio}
+          onClose={() => setPicker(null)}
+          onError={(m) => toast('error', m)}
+        />
+      )}
 
       <InputBar
         onSend={sendText}
         onTyping={sendTyping}
+        activePicker={picker}
         onOpenGif={() => setPicker((p) => (p === 'gif' ? null : 'gif'))}
         onOpenAudio={() => setPicker((p) => (p === 'audio' ? null : 'audio'))}
+        onClosePickers={() => setPicker(null)}
         disabled={status !== 'connected'}
       />
 
@@ -311,6 +354,55 @@ function App() {
           <div key={t.id} class={`toast toast-${t.kind}`}>{t.message}</div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// =============================================
+// Nickname screen — shown on very first launch
+// =============================================
+
+interface NicknameScreenProps {
+  identity: Identity;
+  vscode: VsCodeApi;
+  onDone: () => void;
+}
+
+function NicknameScreen({ identity, vscode: vsApi, onDone }: NicknameScreenProps) {
+  const [name, setName] = useState(identity.name === '…' ? '' : identity.name);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  const submit = () => {
+    const trimmed = name.trim();
+    if (trimmed) {
+      vsApi.postMessage({ cmd: 'saveName', name: trimmed });
+    }
+    onDone();
+  };
+
+  return (
+    <div class="nickname-screen">
+      <span class="codicon codicon-account nickname-screen-icon" />
+      <h3>Welcome to DevChat</h3>
+      <p class="nickname-desc">Pick a display name for your chats.</p>
+      <div class="nickname-form">
+        <input
+          ref={inputRef}
+          class="chat-input nickname-input"
+          type="text"
+          placeholder={identity.name}
+          value={name}
+          maxLength={32}
+          onInput={(e) => setName((e.target as HTMLInputElement).value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
+        />
+        <button class="primary-btn" onClick={submit}>
+          Continue <span class="codicon codicon-arrow-right" />
+        </button>
+      </div>
+      <p class="hint">You can change this later from the members panel.</p>
     </div>
   );
 }

@@ -51,9 +51,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         case 'copyInvite': {
           const code = store.roomCode;
           if (!code) break;
-          const plain = `${getConfig().serverUrl}/#join=${code}`;
-          await vscode.env.clipboard.writeText(plain);
-          void vscode.window.showInformationMessage(`Invite link copied: ${plain}`);
+          await vscode.env.clipboard.writeText(code);
+          void vscode.window.showInformationMessage(`Room code copied: ${code}`);
           break;
         }
         case 'leave': {
@@ -74,6 +73,17 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           await vscode.commands.executeCommand('devchat.joinRoom');
           break;
         }
+        case 'saveName': {
+          // First-run nickname prompt — persist the chosen name
+          const current = await getIdentity(this.context);
+          const name = String(msg.name ?? '').trim().slice(0, 32);
+          if (name) {
+            const identity: Identity = { ...current, name, isFirstRun: false };
+            await this.saveIdentity(identity);
+            void this.view?.webview.postMessage({ event: 'identity', identity: { name: identity.name, color: identity.color } });
+          }
+          break;
+        }
         case 'setNickname': {
           const current = await getIdentity(this.context);
           const name = await vscode.window.showInputBox({
@@ -84,7 +94,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           if (name && name.trim()) {
             const identity = { ...current, name: name.trim().slice(0, 32) };
             await this.saveIdentity(identity);
-            void this.view?.webview.postMessage({ event: 'identity', identity });
+            void this.view?.webview.postMessage({ event: 'identity', identity: { name: identity.name, color: identity.color } });
           }
           break;
         }
@@ -134,6 +144,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     const styleUri = webview.asWebviewUri(
       vscode.Uri.joinPath(this.context.extensionUri, 'dist', 'webview.css'),
     );
+    const codiconUri = webview.asWebviewUri(
+      vscode.Uri.joinPath(this.context.extensionUri, 'dist', 'codicon.css'),
+    );
     const csp = cspTag(n, config.serverUrl, webview.cspSource);
 
     return `<!DOCTYPE html>
@@ -143,6 +156,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   <meta http-equiv="Content-Security-Policy" content="${csp}">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>DevChat</title>
+  <link rel="stylesheet" nonce="${n}" href="${codiconUri}">
   <link rel="stylesheet" nonce="${n}" href="${styleUri}">
 </head>
 <body>

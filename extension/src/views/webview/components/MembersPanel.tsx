@@ -13,7 +13,9 @@ export function MembersPanel({ members, onEditNickname }: Props) {
           <span class="member-name">{m.name}</span>
         </div>
       ))}
-      <button class="member-edit" onClick={onEditNickname}>✏️ Change nickname</button>
+      <button class="member-edit" onClick={onEditNickname}>
+        <span class="codicon codicon-edit" /> Change nickname
+      </button>
     </div>
   );
 }
