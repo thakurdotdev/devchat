@@ -1,0 +1,22 @@
+[
+  { "id": "fart", "name": "Fart Reverb", "url": "https://mock.local/media/fart-reverb.mp3" },
+  { "id": "vine-boom", "name": "VINE BOOM SOUND", "url": "https://mock.local/media/vine-boom.mp3" },
+  { "id": "airhorn", "name": "Air Horn", "url": "https://mock.local/media/airhorn.mp3" },
+  { "id": "drum-roll", "name": "Drum Roll Please", "url": "https://mock.local/media/drum-roll.mp3" },
+  { "id": "wow-so-cool", "name": "Wow Sound Effect", "url": "https://mock.local/media/wow.mp3" },
+  { "id": "sad-trombone", "name": "Sad Trombone Wah Wah", "url": "https://mock.local/media/sad-trombone.mp3" },
+  { "id": "coin-mario", "name": "Mario Coin Collect", "url": "https://mock.local/media/coin-mario.mp3" },
+  { "id": "error-windows", "name": "Windows Error Sound", "url": "https://mock.local/media/error-windows.mp3" },
+  { "id": "success-charge", "name": "Charge Success Sound", "url": "https://mock.local/media/success-charge.mp3" },
+  { "id": "crickets", "name": "Crickets Chirping Silence", "url": "https://mock.local/media/crickets.mp3" },
+  { "id": "bruh", "name": "Bruh Sound Effect #2", "url": "https://mock.local/media/bruh.mp3" },
+  { "id": "yahoo-yodel", "name": "Yahoo Yodel", "url": "https://mock.local/media/yahoo-yodel.mp3" },
+  { "id": "hallelujah-chorus", "name": "Hallelujah Chorus Short", "url": "https://mock.local/media/hallelujah.mp3" },
+  { "id": "evil-laugh", "name": "Evil Laugh Muahaha", "url": "https://mock.local/media/evil-laugh.mp3" },
+  { "id": "nope-whip", "name": "Nope Whip Crack", "url": "https://mock.local/media/nope-whip.mp3" },
+  { "id": "taco-bell-bong", "name": "Taco Bell Bong", "url": "https://mock.local/media/taco-bell-bong.mp3" },
+  { "id": "all-aboard-train", "name": "All Aboard Train Horn", "url": "https://mock.local/media/all-aboard.mp3" },
+  { "id": "applause-audience", "name": "Audience Applause", "url": "https://mock.local/media/applause.mp3" },
+  { "id": "dun-dun-dunnn", "name": "Dun Dun Dunnn Dramatic", "url": "https://mock.local/media/dun-dun-dunnn.mp3" },
+  { "id": "mission-accomplished", "name": "Mission Accomplished Fanfare", "url": "https://mock.local/media/mission.mp3" }
+]

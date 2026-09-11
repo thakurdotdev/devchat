@@ -1,0 +1,94 @@
+{
+  "name": "devchat-extension",
+  "displayName": "DevChat",
+  "description": "Temporary, no-auth chat rooms for VS Code — text, GIFs and audio clips in real time.",
+  "version": "0.1.0",
+  "publisher": "devchat",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other",
+    "Collaboration"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onUri",
+    "onView:devchat.chatView"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "devchat",
+          "title": "DevChat",
+          "icon": "media/icons/chat.svg"
+        }
+      ]
+    },
+    "views": {
+      "devchat": [
+        {
+          "type": "webview",
+          "id": "devchat.chatView",
+          "name": "Chat"
+        },
+        {
+          "type": "tree",
+          "id": "devchat.roomsView",
+          "name": "Status"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "devchat.createRoom",
+        "title": "DevChat: Create Room"
+      },
+      {
+        "command": "devchat.joinRoom",
+        "title": "DevChat: Join Room"
+      },
+      {
+        "command": "devchat.leaveRoom",
+        "title": "DevChat: Leave Room"
+      },
+      {
+        "command": "devchat.copyInvite",
+        "title": "DevChat: Copy Invite Link"
+      }
+    ],
+    "configuration": {
+      "title": "DevChat",
+      "properties": {
+        "devchat.serverUrl": {
+          "type": "string",
+          "default": "http://localhost:3030",
+          "description": "DevChat server base URL (http(s) — the webview derives the WS URL from it)"
+        },
+        "devchat.nickname": {
+          "type": "string",
+          "default": "",
+          "description": "Your chat nickname (auto-generated if empty)"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "node esbuild.js",
+    "compile:watch": "node esbuild.js --watch",
+    "build": "node esbuild.js --production",
+    "package": "vsce package --no-dependencies"
+  },
+  "dependencies": {
+    "@devchat/shared": "workspace:*",
+    "preact": "^10.23.0"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.0.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^7.0.2"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "name": "devchat",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "server",
+    "extension"
+  ],
+  "scripts": {
+    "dev:server": "bun --hot server/src/index.ts",
+    "dev:ext": "bun run --cwd extension compile:watch",
+    "dev": "bun run dev:ext & bun run dev:server",
+    "build": "bun run --cwd extension build",
+    "typecheck": "tsc --noEmit -p packages/shared && tsc --noEmit -p server",
+    "test": "bun test",
+    "start:server": "bun run server/src/index.ts"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "name": "@devchat/server",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bun --hot src/index.ts",
+    "start": "bun src/index.ts",
+    "build": "bun build src/index.ts --target bun --outdir dist"
+  },
+  "dependencies": {
+    "@devchat/shared": "workspace:*",
+    "@elysiajs/cors": "^1.1.0",
+    "@sinclair/typebox": "^0.34.0",
+    "elysia": "^1.1.0",
+    "ioredis": "^5.4.0",
+    "nanoid": "^5.0.0"
+  },
+  "devDependencies": {
+    "bun-types": "1.4.2"
+  }
+}
