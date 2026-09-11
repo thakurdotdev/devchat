@@ -23,7 +23,7 @@ export function cspTag(n: string, serverUrl: string, webviewCspSource: string): 
   return [
     `default-src 'none'`,
     `img-src https: http: data: blob: ${webviewCspSource}`,
-    `media-src https: http: blob: data:`,
+    `media-src https: http: blob: data: ${webviewCspSource}`,
     `script-src ${webviewCspSource} 'nonce-${n}'`,
     `style-src 'unsafe-inline' ${webviewCspSource}`,
     `connect-src ${connect}`,

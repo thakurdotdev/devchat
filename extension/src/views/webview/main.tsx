@@ -151,7 +151,12 @@ function App() {
             const incomingMsg = frame as unknown as ChatMessage;
             mergeMessages([incomingMsg]);
             if (incomingMsg.memberId !== youIdRef.current) {
-              vscode.postMessage({ cmd: 'incomingMessage', message: incomingMsg });
+              const isFocused = document.hasFocus() && !document.hidden;
+              vscode.postMessage({
+                cmd: 'incomingMessage',
+                message: incomingMsg,
+                isFocused,
+              });
             }
             break;
           }
@@ -251,22 +256,58 @@ function App() {
     return () => clearInterval(t);
   }, []);
 
+  // clear unread notification badge on user activity or when webview is focused
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const notifyActivity = () => {
+      if (timer) return;
+      timer = setTimeout(() => {
+        timer = null;
+      }, 300);
+      vscode.postMessage({ cmd: 'markRead' });
+    };
+
+    window.addEventListener('focus', notifyActivity);
+    window.addEventListener('pointerdown', notifyActivity, true);
+    window.addEventListener('keydown', notifyActivity, true);
+    const handleVis = () => {
+      if (!document.hidden) notifyActivity();
+    };
+    document.addEventListener('visibilitychange', handleVis);
+
+    if (!document.hidden) {
+      notifyActivity();
+    }
+
+    return () => {
+      window.removeEventListener('focus', notifyActivity);
+      window.removeEventListener('pointerdown', notifyActivity, true);
+      window.removeEventListener('keydown', notifyActivity, true);
+      document.removeEventListener('visibilitychange', handleVis);
+      if (timer) clearTimeout(timer);
+    };
+  }, []);
+
   // ---------------- actions ----------------
 
   const sendText = (text: string) => {
+    vscode.postMessage({ cmd: 'markRead' });
     socketRef.current?.send({ type: 'message', text });
   };
   const sendTyping = () => {
+    vscode.postMessage({ cmd: 'markRead' });
     const now = Date.now();
     if (now - lastTypingRef.current < 1000) return;
     lastTypingRef.current = now;
     socketRef.current?.send({ type: 'typing' });
   };
   const sendGif = (g: { id: string; url: string; preview: string; title: string }) => {
+    vscode.postMessage({ cmd: 'markRead' });
     socketRef.current?.send({ type: 'gif', id: g.id, url: g.url, preview: g.preview, title: g.title });
     setPicker(null);
   };
   const sendAudio = (s: { id: string; url: string; title: string }) => {
+    vscode.postMessage({ cmd: 'markRead' });
     socketRef.current?.send({ type: 'audio', id: s.id, url: s.url, title: s.title });
     setPicker(null);
   };

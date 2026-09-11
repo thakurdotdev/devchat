@@ -17,11 +17,23 @@ export function activate(context: vscode.ExtensionContext): void {
   const chatProvider = new ChatViewProvider(context);
   const roomsTree = new RoomsTreeProvider();
 
+  const roomsTreeView = vscode.window.createTreeView('devchat.roomsView', {
+    treeDataProvider: roomsTree,
+    showCollapseAll: false,
+  });
+  chatProvider.setTreeView(roomsTreeView);
+  chatProvider.clearUnread();
+
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(ChatViewProvider.viewId, chatProvider, {
       webviewOptions: { retainContextWhenHidden: true },
     }),
-    vscode.window.createTreeView('devchat.roomsView', { treeDataProvider: roomsTree, showCollapseAll: false }),
+    roomsTreeView,
+    vscode.window.onDidChangeWindowState((e) => {
+      if (e.focused && chatProvider.isChatVisible()) {
+        chatProvider.clearUnread();
+      }
+    }),
   );
 
   context.subscriptions.push(

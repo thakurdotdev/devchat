@@ -52,8 +52,21 @@ export function mediaRoutes(store: RoomStore, config: Config) {
           ),
         });
       }
-      const res = await fetch(`${config.klipyBaseUrl}/api/search?type=gifs&q=${encodeURIComponent(q)}&page=${page}`);
-      return adaptKlipyResponse(await res.json());
+      try {
+        const res = await fetch(`${config.klipyBaseUrl}/api/search?type=gifs&q=${encodeURIComponent(q)}&page=${page}`);
+        if (!res.ok) throw new Error(`Klipy search error HTTP ${res.status}`);
+        return adaptKlipyResponse(await res.json());
+      } catch (err) {
+        console.error('Klipy search error, falling back to fixtures:', err);
+        const needle = q.toLowerCase();
+        const all = gifsFixture as KlipyRawItem[];
+        return adaptKlipyResponse({
+          data: paginate(
+            all.filter((g) => g.title.toLowerCase().includes(needle) || g.id.includes(needle)),
+            page,
+          ),
+        });
+      }
     });
     return { page, query: q, data };
   });
@@ -64,8 +77,14 @@ export function mediaRoutes(store: RoomStore, config: Config) {
       if (config.mockMedia) {
         return adaptKlipyResponse({ data: paginate(gifsFixture as KlipyRawItem[], page) });
       }
-      const res = await fetch(`${config.klipyBaseUrl}/api/trending?type=gifs&page=${page}`);
-      return adaptKlipyResponse(await res.json());
+      try {
+        const res = await fetch(`${config.klipyBaseUrl}/api/trending?type=gifs&page=${page}`);
+        if (!res.ok) throw new Error(`Klipy trending error HTTP ${res.status}`);
+        return adaptKlipyResponse(await res.json());
+      } catch (err) {
+        console.error('Klipy trending error, falling back to fixtures:', err);
+        return adaptKlipyResponse({ data: paginate(gifsFixture as KlipyRawItem[], page) });
+      }
     });
     return { page, data };
   });
@@ -87,8 +106,21 @@ export function mediaRoutes(store: RoomStore, config: Config) {
           ),
         });
       }
-      const res = await fetch(`${config.myinstantsBaseUrl}/api/search?q=${encodeURIComponent(q)}&page=${page}`);
-      return adaptMyInstantsResponse(await res.json());
+      try {
+        const res = await fetch(`${config.myinstantsBaseUrl}/api/search?q=${encodeURIComponent(q)}&page=${page}`);
+        if (!res.ok) throw new Error(`MyInstants search error HTTP ${res.status}`);
+        return adaptMyInstantsResponse(await res.json());
+      } catch (err) {
+        console.error('MyInstants search error, falling back to fixtures:', err);
+        const needle = q.toLowerCase();
+        const all = soundsFixture as MyInstantsRawItem[];
+        return adaptMyInstantsResponse({
+          data: paginate(
+            all.filter((s) => s.name.toLowerCase().includes(needle) || s.id.includes(needle)),
+            page,
+          ),
+        });
+      }
     });
     return { page, query: q, data };
   });
@@ -99,9 +131,14 @@ export function mediaRoutes(store: RoomStore, config: Config) {
       if (config.mockMedia) {
         return adaptMyInstantsResponse({ data: paginate(soundsFixture as MyInstantsRawItem[], page) });
       }
-      // MyInstants trending lives at /api/feed (not /api/trending)
-      const res = await fetch(`${config.myinstantsBaseUrl}/api/feed?page=${page}`);
-      return adaptMyInstantsResponse(await res.json());
+      try {
+        const res = await fetch(`${config.myinstantsBaseUrl}/api/feed?page=${page}`);
+        if (!res.ok) throw new Error(`MyInstants feed error HTTP ${res.status}`);
+        return adaptMyInstantsResponse(await res.json());
+      } catch (err) {
+        console.error('MyInstants feed error, falling back to fixtures:', err);
+        return adaptMyInstantsResponse({ data: paginate(soundsFixture as MyInstantsRawItem[], page) });
+      }
     });
     return { page, data };
   });

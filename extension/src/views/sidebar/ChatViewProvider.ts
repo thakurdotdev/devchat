@@ -18,12 +18,26 @@ export interface WebviewInitPayload {
 export class ChatViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewId = 'devchat.chatView';
   private view?: vscode.WebviewView;
+  private roomsTreeView?: vscode.TreeView<any>;
   private pendingRoom: string | null = null;
   private unreadCount = 0;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
   ) {}
+
+  setTreeView(treeView: vscode.TreeView<any>): void {
+    this.roomsTreeView = treeView;
+    treeView.onDidChangeVisibility((e) => {
+      if (e.visible) {
+        this.clearUnread();
+      }
+    });
+  }
+
+  public isChatVisible(): boolean {
+    return Boolean(this.view?.visible || this.roomsTreeView?.visible);
+  }
 
   resolveWebviewView(view: vscode.WebviewView): void {
     this.view = view;
@@ -34,6 +48,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
     view.webview.html = this.getHtml(view.webview);
 
+    if (view.visible) {
+      this.clearUnread();
+    }
+
     view.onDidChangeVisibility(() => {
       if (view.visible) {
         this.clearUnread();
@@ -42,13 +60,18 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
     view.onDidDispose(() => {
       this.view = undefined;
-      this.unreadCount = 0;
+      this.clearUnread();
     });
 
     view.webview.onDidReceiveMessage(async (msg) => {
       switch (msg?.cmd) {
         case 'ready': {
+          this.clearUnread();
           await this.pushInit();
+          break;
+        }
+        case 'markRead': {
+          this.clearUnread();
           break;
         }
         case 'status': {
@@ -64,14 +87,21 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           const chatMsg = msg.message;
           if (!chatMsg) break;
 
-          const isVisible = this.view?.visible ?? false;
+          const isWebviewFocused = Boolean(msg.isFocused);
+          const isVisible = this.isChatVisible();
+          const isActivelyChatting = isVisible && isWebviewFocused;
+
+          // If the user is actively chatting in the webview, clear badge and skip notification
+          if (isActivelyChatting) {
+            this.clearUnread();
+            break;
+          }
+
+          // Update unread badge on activity bar if chat is not actively visible and focused
+          this.incrementUnread();
+
           const config = getConfig();
           const currentIdentity = await getIdentity(this.context);
-
-          // Update unread badge on activity bar if chat is not visible
-          if (!isVisible) {
-            this.incrementUnread();
-          }
 
           // Check whether to show toast notification
           const shouldNotify = !isVisible || config.notifications.notifyWhenFocused;
@@ -106,6 +136,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
           void vscode.window.showInformationMessage(toastText, 'Open Chat').then(async (action) => {
             if (action === 'Open Chat') {
+              this.clearUnread();
               await vscode.commands.executeCommand('devchat.chatView.focus');
             }
           });
@@ -114,7 +145,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         case 'memberEvent': {
           const config = getConfig();
           if (!config.notifications.roomEvents) break;
-          const isVisible = this.view?.visible ?? false;
+          const isVisible = this.isChatVisible();
           if (isVisible && !config.notifications.notifyWhenFocused) break;
 
           const name = msg.memberName || 'Someone';
@@ -141,10 +172,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           break;
         }
         case 'createRoom': {
+          this.clearUnread();
           await vscode.commands.executeCommand('devchat.createRoom');
           break;
         }
         case 'showJoin': {
+          this.clearUnread();
           await vscode.commands.executeCommand('devchat.joinRoom');
           break;
         }
@@ -177,23 +210,46 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     });
   }
 
-  private clearUnread(): void {
-    this.unreadCount = 0;
-    if (this.view) {
-      this.view.badge = undefined;
+  private setBadge(count: number): void {
+    if (count > 0) {
+      const badge: vscode.ViewBadge = {
+        value: count,
+        tooltip: `${count} unread message${count === 1 ? '' : 's'}`,
+      };
+      // Primary badge target: TreeView in the devchat container.
+      // Native TreeView clears reliably across all VS Code versions (including < 1.137).
+      if (this.roomsTreeView) {
+        this.roomsTreeView.badge = badge;
+      } else if (this.view) {
+        this.view.badge = badge;
+      }
+    } else {
+      // Clear badge
+      if (this.roomsTreeView) {
+        try {
+          this.roomsTreeView.badge = { value: 0, tooltip: '' };
+        } catch {}
+        this.roomsTreeView.badge = undefined;
+      }
+      if (this.view) {
+        try {
+          this.view.badge = { value: 0, tooltip: '' };
+        } catch {}
+        this.view.badge = undefined;
+      }
     }
+  }
+
+  public clearUnread(): void {
+    this.unreadCount = 0;
+    this.setBadge(0);
   }
 
   private incrementUnread(): void {
     const config = getConfig();
     if (!config.notifications.badge) return;
     this.unreadCount++;
-    if (this.view) {
-      this.view.badge = {
-        value: this.unreadCount,
-        tooltip: `${this.unreadCount} unread message${this.unreadCount === 1 ? '' : 's'}`,
-      };
-    }
+    this.setBadge(this.unreadCount);
   }
 
   /** Push init payload (server URL, room, identity) into the webview. */
