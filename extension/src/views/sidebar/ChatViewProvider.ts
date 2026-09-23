@@ -21,6 +21,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private roomsTreeView?: vscode.TreeView<any>;
   private pendingRoom: string | null = null;
   private unreadCount = 0;
+  private pendingMessages = 0;
+  private pendingRoomEvents = 0;
+  private pendingMentions = 0;
+  private latestNotice?: { author: string; preview: string; mentioned: boolean };
+  private notificationTimer?: ReturnType<typeof setTimeout>;
+  private notificationInFlight = false;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -72,6 +78,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
         case 'markRead': {
           this.clearUnread();
+          break;
+        }
+        case 'setBlurGifs': {
+          await vscode.workspace.getConfiguration('devchat').update(
+            'media.blurGifs', Boolean(msg.value), vscode.ConfigurationTarget.Global,
+          );
           break;
         }
         case 'status': {
@@ -126,19 +138,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             body = `played sound${chatMsg.media?.title ? `: "${chatMsg.media.title}"` : ''}`;
           }
 
-          if (body.length > 80) {
-            body = body.slice(0, 77) + '…';
-          }
-
-          const author = chatMsg.name || 'Someone';
-          const title = mentioned ? `DevChat • @${author} mentioned you:` : `DevChat • ${author}:`;
-          const toastText = `${title} ${body}`;
-
-          void vscode.window.showInformationMessage(toastText, 'Open Chat').then(async (action) => {
-            if (action === 'Open Chat') {
-              this.clearUnread();
-              await vscode.commands.executeCommand('devchat.chatView.focus');
-            }
+          this.enqueueNotification({
+            kind: 'message',
+            author: String(chatMsg.name || 'Someone'),
+            preview: truncate(body || 'sent a message', 96),
+            mentioned,
           });
           break;
         }
@@ -150,7 +154,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
           const name = msg.memberName || 'Someone';
           const actionText = msg.kind === 'joined' ? 'joined the room' : 'left the room';
-          void vscode.window.showInformationMessage(`DevChat: ${name} ${actionText}`);
+          this.enqueueNotification({ kind: 'roomEvent', author: name, preview: actionText, mentioned: false });
           break;
         }
         case 'copyInvite': {
@@ -243,6 +247,70 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   public clearUnread(): void {
     this.unreadCount = 0;
     this.setBadge(0);
+    this.clearPendingNotifications();
+  }
+
+  private enqueueNotification(notice: { kind: 'message' | 'roomEvent'; author: string; preview: string; mentioned: boolean }): void {
+    if (notice.kind === 'message') this.pendingMessages++;
+    else this.pendingRoomEvents++;
+    if (notice.mentioned) this.pendingMentions++;
+    this.latestNotice = notice;
+    if (!this.notificationInFlight && !this.notificationTimer) {
+      this.notificationTimer = setTimeout(() => { void this.showPendingNotification(); }, 700);
+    }
+  }
+
+  private async showPendingNotification(): Promise<void> {
+    this.notificationTimer = undefined;
+    if (this.notificationInFlight || (!this.pendingMessages && !this.pendingRoomEvents) || !this.latestNotice) return;
+
+    const messages = this.pendingMessages;
+    const roomEvents = this.pendingRoomEvents;
+    const mentions = this.pendingMentions;
+    const latest = this.latestNotice;
+    this.pendingMessages = 0;
+    this.pendingRoomEvents = 0;
+    this.pendingMentions = 0;
+    this.latestNotice = undefined;
+    this.notificationInFlight = true;
+
+    const total = messages + roomEvents;
+    let summary: string;
+    if (messages === 1 && roomEvents === 0) {
+      summary = latest.mentioned
+        ? `@${latest.author} mentioned you: ${latest.preview}`
+        : `${latest.author}: ${latest.preview}`;
+    } else {
+      const activity = messages && roomEvents
+        ? `${total} new chat updates`
+        : messages
+          ? `${messages} new message${messages === 1 ? '' : 's'}`
+          : `${roomEvents} room update${roomEvents === 1 ? '' : 's'}`;
+      const mentionPrefix = mentions ? `${mentions} mention${mentions === 1 ? '' : 's'} · ` : '';
+      summary = `${mentionPrefix}${activity} · Latest: ${latest.author}: ${latest.preview}`;
+    }
+
+    try {
+      const action = await vscode.window.showInformationMessage(`DevChat · ${summary}`, 'Open Chat');
+      if (action === 'Open Chat') {
+        this.clearUnread();
+        await vscode.commands.executeCommand('devchat.chatView.focus');
+      }
+    } finally {
+      this.notificationInFlight = false;
+      if ((this.pendingMessages || this.pendingRoomEvents) && !this.notificationTimer) {
+        this.notificationTimer = setTimeout(() => { void this.showPendingNotification(); }, 700);
+      }
+    }
+  }
+
+  private clearPendingNotifications(): void {
+    if (this.notificationTimer) clearTimeout(this.notificationTimer);
+    this.notificationTimer = undefined;
+    this.pendingMessages = 0;
+    this.pendingRoomEvents = 0;
+    this.pendingMentions = 0;
+    this.latestNotice = undefined;
   }
 
   private incrementUnread(): void {
@@ -259,7 +327,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     const identity = await getIdentity(this.context);
     const roomCode = this.pendingRoom ?? store.roomCode;
     this.pendingRoom = null;
-    await this.view.webview.postMessage({ event: 'init', serverUrl: config.serverUrl, roomCode, identity });
+    await this.view.webview.postMessage({ event: 'init', serverUrl: config.serverUrl, roomCode, identity, blurGifs: config.blurGifs });
   }
 
   /** Called when devchat.serverUrl or other settings change in VS Code. */
@@ -267,6 +335,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     if (!this.view) return;
     this.view.webview.html = this.getHtml(this.view.webview);
     void this.pushInit();
+  }
+
+  /** Push media preferences without rebuilding the webview. */
+  onMediaConfigChanged(): void {
+    void this.view?.webview.postMessage({ event: 'mediaConfig', blurGifs: getConfig().blurGifs });
   }
 
   /** Called by create/join commands once a new room is active. */
@@ -337,4 +410,9 @@ function isMentioned(text: string, nickname: string): boolean {
   const escaped = nickLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const regex = new RegExp(`@${escaped}(?:\\b|[^a-zA-Z0-9_]|$)`, 'i');
   return regex.test(text);
+}
+
+function truncate(text: string, maxLength: number): string {
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  return normalized.length > maxLength ? `${normalized.slice(0, maxLength - 1)}…` : normalized;
 }

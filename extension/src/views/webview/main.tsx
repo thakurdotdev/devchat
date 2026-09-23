@@ -35,9 +35,22 @@ interface Toast {
 }
 
 type PickerTab = 'gif' | 'audio' | null;
+type GifBlurOverrides = Record<string, boolean>;
+
+interface WebviewState {
+  gifBlurOverrides?: GifBlurOverrides;
+}
+
+function readGifBlurOverrides(state: unknown): GifBlurOverrides {
+  const saved = (state as WebviewState | null)?.gifBlurOverrides;
+  if (!saved || typeof saved !== 'object' || Array.isArray(saved)) return {};
+  return Object.fromEntries(Object.entries(saved).filter((entry): entry is [string, boolean] => typeof entry[1] === 'boolean'));
+}
 
 function App() {
   const vscode = useMemo(() => acquireVsCodeApi(), []);
+  const [gifBlurOverrides, setGifBlurOverrides] = useState<GifBlurOverrides>(() => readGifBlurOverrides(vscode.getState()));
+  const [blurGifs, setBlurGifs] = useState(false);
 
   const [ready, setReady] = useState(false);
   const [serverUrl, setServerUrl] = useState('');
@@ -56,6 +69,7 @@ function App() {
   const [tick, setTick] = useState(0); // drives the expiry countdown re-render
 
   const socketRef = useRef<ChatSocket | null>(null);
+  const connectionKeyRef = useRef('');
   const serverUrlRef = useRef(serverUrl);
   serverUrlRef.current = serverUrl;
   const roomCodeRef = useRef(roomCode);
@@ -112,7 +126,11 @@ function App() {
   // ---------------- connection ----------------
 
   const connect = useCallback((url: string, code: string, id: Identity) => {
+    const connectionKey = JSON.stringify([url, code, id.id ?? '', id.name, id.color]);
+    if (connectionKeyRef.current === connectionKey && socketRef.current?.canContinue) return;
+
     socketRef.current?.close();
+    connectionKeyRef.current = connectionKey;
     const socket = new ChatSocket(url, code, id, {
       onStatus: (s) => setStatus(s),
       onFrame: (frame) => {
@@ -198,6 +216,7 @@ function App() {
       switch (msg.event) {
         case 'init':
           setReady(true);
+          setBlurGifs(Boolean(msg.blurGifs));
           if (msg.serverUrl) {
             serverUrlRef.current = msg.serverUrl;
             setServerUrl(msg.serverUrl);
@@ -206,6 +225,10 @@ function App() {
           setIsFirstRun(!!msg.identity?.isFirstRun);
           setRoomCode(msg.roomCode);
           if (msg.roomCode && msg.serverUrl) connect(msg.serverUrl, msg.roomCode, msg.identity);
+          break;
+        case 'mediaConfig':
+          setBlurGifs(Boolean(msg.blurGifs));
+          setGifBlurOverrides({});
           break;
         case 'room':
           if (msg.roomCode) {
@@ -233,6 +256,7 @@ function App() {
           break;
         case 'leave':
           socketRef.current?.close();
+          connectionKeyRef.current = '';
           setRoomCode(null);
           setMessages([]);
           setMembers([]);
@@ -244,6 +268,19 @@ function App() {
     window.addEventListener('message', handler);
     return () => window.removeEventListener('message', handler);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (messages.length === 0) return;
+    const activeGifIds = new Set(messages.filter((message) => message.kind === 'gif').map((message) => message.id));
+    setGifBlurOverrides((current) => {
+      const entries = Object.entries(current).filter(([id]) => activeGifIds.has(id));
+      return entries.length === Object.keys(current).length ? current : Object.fromEntries(entries);
+    });
+  }, [messages]);
+
+  useEffect(() => {
+    vscode.setState({ ...(vscode.getState() as object ?? {}), gifBlurOverrides });
+  }, [gifBlurOverrides]);
 
   // relay status to the extension host (for the Status tree view)
   useEffect(() => {
@@ -314,6 +351,10 @@ function App() {
   const react = (messageId: string, emoji: string) => {
     socketRef.current?.send({ type: 'react', messageId, emoji });
   };
+  const isGifBlurred = useCallback((messageId: string) => gifBlurOverrides[messageId] ?? blurGifs, [gifBlurOverrides, blurGifs]);
+  const toggleGifBlur = useCallback((messageId: string) => {
+    setGifBlurOverrides((current) => ({ ...current, [messageId]: !isGifBlurred(messageId) }));
+  }, [isGifBlurred]);
 
   const memberName = useCallback(
     (id: string) => {
@@ -378,8 +419,17 @@ function App() {
         <button class="icon-btn" title="Members" onClick={() => setShowMembers((v) => !v)}>
           <span class="codicon codicon-organization" /> {members.length}
         </button>
-        <button class="icon-btn" title="Copy invite link" onClick={() => vscode.postMessage({ cmd: 'copyInvite' })}>
-          <span class="codicon codicon-link" />
+        <button
+          class={`icon-btn media-toggle ${blurGifs ? 'active' : ''}`}
+          title={`${blurGifs ? 'Disable' : 'Enable'} GIF blur`}
+          aria-label={`${blurGifs ? 'Disable' : 'Enable'} GIF blur`}
+          aria-pressed={blurGifs}
+          onClick={() => vscode.postMessage({ cmd: 'setBlurGifs', value: !blurGifs })}
+        >
+          <span class={`codicon ${blurGifs ? 'codicon-eye-closed' : 'codicon-eye'}`} />
+        </button>
+        <button class="icon-btn" title="Copy room code" aria-label="Copy room code" onClick={() => vscode.postMessage({ cmd: 'copyInvite' })}>
+          <span class="codicon codicon-copy" />
         </button>
         <button class="icon-btn" title="Leave room" onClick={() => vscode.postMessage({ cmd: 'leave' })}>
           <span class="codicon codicon-close" />
@@ -388,34 +438,43 @@ function App() {
 
       {showMembers && <MembersPanel members={members} onEditNickname={() => vscode.postMessage({ cmd: 'setNickname' })} />}
 
-      <MessageList messages={messages} youId={youId} typingIds={typingIds} memberName={memberName} onReact={react} />
-
-      {picker === 'gif' && (
-        <GifPicker
-          serverUrl={serverUrl}
-          onSend={sendGif}
-          onClose={() => setPicker(null)}
-          onError={(m) => toast('error', m)}
-        />
-      )}
-      {picker === 'audio' && (
-        <AudioPicker
-          serverUrl={serverUrl}
-          onSend={sendAudio}
-          onClose={() => setPicker(null)}
-          onError={(m) => toast('error', m)}
-        />
-      )}
-
-      <InputBar
-        onSend={sendText}
-        onTyping={sendTyping}
-        activePicker={picker}
-        onOpenGif={() => setPicker((p) => (p === 'gif' ? null : 'gif'))}
-        onOpenAudio={() => setPicker((p) => (p === 'audio' ? null : 'audio'))}
-        onClosePickers={() => setPicker(null)}
-        disabled={status !== 'connected'}
+      <MessageList
+        messages={messages}
+        youId={youId}
+        typingIds={typingIds}
+        memberName={memberName}
+        onReact={react}
+        isGifBlurred={isGifBlurred}
+        onToggleGifBlur={toggleGifBlur}
       />
+
+      <div class="composer">
+        {picker === 'gif' && (
+          <GifPicker
+            serverUrl={serverUrl}
+            onSend={sendGif}
+            onClose={() => setPicker(null)}
+            onError={(m) => toast('error', m)}
+          />
+        )}
+        {picker === 'audio' && (
+          <AudioPicker
+            serverUrl={serverUrl}
+            onSend={sendAudio}
+            onClose={() => setPicker(null)}
+            onError={(m) => toast('error', m)}
+          />
+        )}
+        <InputBar
+          onSend={sendText}
+          onTyping={sendTyping}
+          activePicker={picker}
+          onOpenGif={() => setPicker((p) => (p === 'gif' ? null : 'gif'))}
+          onOpenAudio={() => setPicker((p) => (p === 'audio' ? null : 'audio'))}
+          onClosePickers={() => setPicker(null)}
+          disabled={status !== 'connected'}
+        />
+      </div>
 
       <div class="toasts">
         {toasts.map((t) => (

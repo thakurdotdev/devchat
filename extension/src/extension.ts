@@ -54,9 +54,8 @@ export function activate(context: vscode.ExtensionContext): void {
       },
     }),
     vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration('devchat.serverUrl')) {
-        chatProvider.onConfigChanged();
-      }
+      if (e.affectsConfiguration('devchat.serverUrl')) chatProvider.onConfigChanged();
+      if (e.affectsConfiguration('devchat.media.blurGifs')) chatProvider.onMediaConfigChanged();
     }),
   );
 

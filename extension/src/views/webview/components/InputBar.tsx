@@ -64,30 +64,6 @@ export function InputBar({
 
   return (
     <div class="input-area">
-      <div class="tabs">
-        <button
-          class={`tab ${showEmoji ? 'active' : ''}`}
-          title="Emoji"
-          onClick={toggleEmoji}
-        >
-          <span class="codicon codicon-smiley" />
-        </button>
-        <button
-          class={`tab tab-text ${activePicker === 'gif' ? 'active' : ''}`}
-          title="GIFs"
-          onClick={handleOpenGif}
-        >
-          GIF
-        </button>
-        <button
-          class={`tab ${activePicker === 'audio' ? 'active' : ''}`}
-          title="Sounds"
-          onClick={handleOpenAudio}
-        >
-          <span class="codicon codicon-unmute" />
-        </button>
-      </div>
-
       {showEmoji && (
         <div class="emoji-grid">
           {EMOJIS.map((e) => (
@@ -97,6 +73,33 @@ export function InputBar({
       )}
 
       <div class="input-row">
+        <button
+          class={`tab ${showEmoji ? 'active' : ''}`}
+          title="Emoji"
+          aria-label="Insert emoji"
+          aria-pressed={showEmoji}
+          onClick={toggleEmoji}
+        >
+          <span class="codicon codicon-smiley" />
+        </button>
+        <button
+          class={`tab tab-text ${activePicker === 'gif' ? 'active' : ''}`}
+          title="GIFs"
+          aria-label="Choose a GIF"
+          aria-pressed={activePicker === 'gif'}
+          onClick={handleOpenGif}
+        >
+          <span class="codicon codicon-file-media" />
+        </button>
+        <button
+          class={`tab ${activePicker === 'audio' ? 'active' : ''}`}
+          title="Sounds"
+          aria-label="Choose a sound"
+          aria-pressed={activePicker === 'audio'}
+          onClick={handleOpenAudio}
+        >
+          <span class="codicon codicon-unmute" />
+        </button>
         <input
           ref={inputRef}
           class="chat-input"

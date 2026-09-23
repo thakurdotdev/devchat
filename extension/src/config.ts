@@ -11,6 +11,7 @@ export interface NotificationConfig {
 export interface ExtensionConfig {
   serverUrl: string;
   nickname: string;
+  blurGifs: boolean;
   notifications: NotificationConfig;
 }
 
@@ -40,6 +41,7 @@ export function getConfig(): ExtensionConfig {
   return {
     serverUrl: normalizeServerUrl(cfg.get<string>('serverUrl')),
     nickname: cfg.get<string>('nickname') || '',
+    blurGifs: cfg.get<boolean>('media.blurGifs') ?? false,
     notifications: {
       mode: validMode,
       badge: cfg.get<boolean>('notifications.badge') ?? true,

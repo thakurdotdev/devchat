@@ -8,9 +8,11 @@ interface Props {
   typingIds: string[];
   memberName: (id: string) => string;
   onReact: (messageId: string, emoji: string) => void;
+  isGifBlurred: (messageId: string) => boolean;
+  onToggleGifBlur: (messageId: string) => void;
 }
 
-export function MessageList({ messages, youId, typingIds, memberName, onReact }: Props) {
+export function MessageList({ messages, youId, typingIds, memberName, onReact, isGifBlurred, onToggleGifBlur }: Props) {
   const listRef = useRef<HTMLDivElement | null>(null);
   const count = messages.length;
 
@@ -45,6 +47,8 @@ export function MessageList({ messages, youId, typingIds, memberName, onReact }:
             showAuthor={!isConsecutive}
             memberName={memberName}
             onReact={onReact}
+            isGifBlurred={isGifBlurred}
+            onToggleGifBlur={onToggleGifBlur}
           />
         );
       })}

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import type { MediaAttachment } from '@devchat/shared';
+import { useInfiniteMedia } from '../hooks/useInfiniteMedia';
 
 interface Props {
   serverUrl: string;
@@ -16,13 +16,16 @@ const QUICK_SOUNDS = ['Trending', 'Bruh', 'Applause', 'Fail', 'Wow', 'Boom'];
  */
 export function AudioPicker({ serverUrl, onSend, onClose, onError }: Props) {
   const [query, setQuery] = useState('');
-  const [items, setItems] = useState<MediaAttachment[]>([]);
-  const [loading, setLoading] = useState(true);
   const [previewId, setPreviewId] = useState<string | null>(null);
 
-  const cacheRef = useRef<Map<string, MediaAttachment[]>>(new Map());
   const inputRef = useRef<HTMLInputElement | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const { items, loading, loadingMore, hasMore, loadMore } = useInfiniteMedia({
+    serverUrl,
+    endpoint: 'sounds',
+    query,
+    onError,
+  });
 
   // Auto-focus search input
   useEffect(() => {
@@ -69,55 +72,15 @@ export function AudioPicker({ serverUrl, onSend, onClose, onError }: Props) {
     };
   };
 
-  // Snappy fetch with cache & 150ms debounce
-  useEffect(() => {
-    let cancelled = false;
-    const trimmed = query.trim();
-    const cacheKey = trimmed.toLowerCase();
-
-    if (cacheRef.current.has(cacheKey)) {
-      setItems(cacheRef.current.get(cacheKey)!);
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    const delay = trimmed ? 150 : 0;
-    const t = setTimeout(async () => {
-      try {
-        const path = trimmed
-          ? `/api/media/sounds/search?q=${encodeURIComponent(trimmed)}`
-          : '/api/media/sounds/trending';
-        const res = await fetch(`${serverUrl}${path}`);
-        if (!res.ok) throw new Error(String(res.status));
-        const body = await res.json();
-        const data: MediaAttachment[] = body.data ?? [];
-        if (!cancelled) {
-          cacheRef.current.set(cacheKey, data);
-          setItems(data);
-        }
-      } catch {
-        if (!cancelled) onError('Could not load sounds');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }, delay);
-
-    return () => {
-      cancelled = true;
-      clearTimeout(t);
-    };
-  }, [query, serverUrl]);
-
   return (
-    <div class="picker">
+    <div class="picker" role="dialog" aria-label="Sound picker" onKeyDown={(event) => { if (event.key === 'Escape') onClose(); }}>
       <div class="picker-header">
         <div class="picker-title">
           <span class="codicon codicon-unmute" />
           <span>Sounds</span>
           {loading && <span class="codicon codicon-loading codicon-modifier-spin picker-spinner" />}
         </div>
-        <button class="picker-close-btn" title="Close" onClick={onClose}>
+        <button class="picker-close-btn" title="Close sound picker" aria-label="Close sound picker" onClick={onClose}>
           <span class="codicon codicon-close" />
         </button>
       </div>
@@ -151,7 +114,7 @@ export function AudioPicker({ serverUrl, onSend, onClose, onError }: Props) {
         ))}
       </div>
 
-      <div class="picker-list">
+      <div class="picker-list" onScroll={(event) => maybeLoadNext(event.currentTarget, loadMore, hasMore, loadingMore)}>
         {loading && items.length === 0 && <div class="picker-status">Loading sounds…</div>}
         {!loading && items.length === 0 && <div class="picker-status">No sounds found</div>}
         {items.map((s) => {
@@ -166,13 +129,14 @@ export function AudioPicker({ serverUrl, onSend, onClose, onError }: Props) {
                 <span class={`codicon ${isPlaying ? 'codicon-debug-stop' : 'codicon-play'}`} />
               </button>
 
-              <span
+              <button
+                type="button"
                 class="sound-name"
                 title={`Click to send "${s.title}"`}
                 onClick={() => onSend({ id: s.id, url: s.url, title: s.title })}
               >
                 {s.title}
-              </span>
+              </button>
 
               <button
                 class="sound-send-btn"
@@ -184,7 +148,15 @@ export function AudioPicker({ serverUrl, onSend, onClose, onError }: Props) {
             </div>
           );
         })}
+        {loadingMore && <div class="picker-more"><span class="codicon codicon-loading codicon-modifier-spin" /> Loading more sounds…</div>}
+        {!hasMore && items.length > 0 && <div class="picker-end">You’re all caught up</div>}
       </div>
     </div>
   );
+}
+
+function maybeLoadNext(element: HTMLElement, loadMore: () => Promise<void>, hasMore: boolean, loading: boolean): void {
+  if (hasMore && !loading && element.scrollHeight - element.scrollTop - element.clientHeight < 100) {
+    void loadMore();
+  }
 }

@@ -2,7 +2,7 @@
   "name": "devchat-extension",
   "displayName": "DevChat Gossip",
   "description": "Temporary, no-auth chat rooms for VS Code — text, GIFs and audio clips in real time.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "thakur",
   "repository": {
     "type": "git",
@@ -69,6 +69,12 @@
           "type": "string",
           "default": "",
           "description": "Your chat nickname (auto-generated if empty)"
+        },
+        "devchat.media.blurGifs": {
+          "type": "boolean",
+          "default": false,
+          "scope": "application",
+          "description": "Blur GIFs and animated media in DevChat messages by default."
         },
         "devchat.notifications.mode": {
           "type": "string",

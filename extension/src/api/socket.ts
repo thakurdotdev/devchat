@@ -41,6 +41,11 @@ export class ChatSocket {
     return this.attempts > 0 ? 'reconnecting' : 'connecting';
   }
 
+  /** True while this socket can reconnect itself or is currently connected. */
+  get canContinue(): boolean {
+    return !this.closedByUser;
+  }
+
   private wsUrl(): string {
     const base = this.serverUrl
       .replace(/^https:\/\//i, 'wss://')

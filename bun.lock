@@ -10,7 +10,7 @@
     },
     "extension": {
       "name": "devchat-extension",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "dependencies": {
         "@devchat/shared": "workspace:*",
         "preact": "^10.23.0",

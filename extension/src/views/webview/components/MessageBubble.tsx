@@ -1,6 +1,7 @@
 import { useState } from 'preact/hooks';
 import type { ChatMessage } from '@devchat/shared';
 import { AudioPlayer } from './AudioPlayer';
+import { GifMedia } from './GifMedia';
 
 const QUICK_EMOJI = ['👍', '🚀', '😂', '❤️', '🎉', '👀'];
 
@@ -11,9 +12,11 @@ interface Props {
   showAuthor?: boolean;
   memberName?: (id: string) => string;
   onReact: (messageId: string, emoji: string) => void;
+  isGifBlurred: (messageId: string) => boolean;
+  onToggleGifBlur: (messageId: string) => void;
 }
 
-export function MessageBubble({ message: m, you, youId, showAuthor = true, memberName, onReact }: Props) {
+export function MessageBubble({ message: m, you, youId, showAuthor = true, memberName, onReact, isGifBlurred, onToggleGifBlur }: Props) {
   const [hover, setHover] = useState(false);
 
   if (m.kind === 'system') {
@@ -41,9 +44,13 @@ export function MessageBubble({ message: m, you, youId, showAuthor = true, membe
         {m.kind === 'text' && <div class="text">{m.text}</div>}
 
         {m.kind === 'gif' && m.media && (
-          isVideo(m.media.url)
-            ? <video class="gif" src={m.media.url} poster={m.media.preview} autoplay loop muted playsinline />
-            : <img class="gif" src={m.media.url} alt={m.media.title} loading="lazy" />
+          <GifMedia
+            url={m.media.url}
+            preview={m.media.preview}
+            title={m.media.title}
+            blurred={isGifBlurred(m.id)}
+            onToggle={() => onToggleGifBlur(m.id)}
+          />
         )}
 
         {m.kind === 'audio' && m.media && (
@@ -92,10 +99,6 @@ export function MessageBubble({ message: m, you, youId, showAuthor = true, membe
       )}
     </div>
   );
-}
-
-function isVideo(url: string): boolean {
-  return /\.(mp4|webm|mov)(\?|$)/i.test(url) || url.includes('.mp4');
 }
 
 function fmtTime(ts: number): string {

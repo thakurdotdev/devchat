@@ -37,7 +37,7 @@ bun run dev:server          # → http://localhost:3030
 cd extension
 bun run compile             # bundles dist/extension.js + dist/webview.js
 # open the repo root in VS Code, press F5 (Run Extension),
-# or install: npx @vscode/vsce package && code --install-extension devchat-0.1.0.vsix
+# or install: npx @vscode/vsce package && code --install-extension devchat-extension-0.1.1.vsix
 ```
 
 In VS Code: click the DevChat icon in the activity bar → **Create a room** →

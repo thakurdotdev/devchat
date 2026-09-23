@@ -11,6 +11,7 @@
     "dev:ext": "bun run --cwd extension compile:watch",
     "dev": "bun run dev:ext & bun run dev:server",
     "build": "bun run --cwd extension build",
+    "package:extension": "bun run --cwd extension package",
     "typecheck": "tsc --noEmit -p packages/shared && tsc --noEmit -p server",
     "test": "bun test",
     "start:server": "bun run server/src/index.ts"
