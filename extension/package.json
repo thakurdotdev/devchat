@@ -1,9 +1,9 @@
 {
   "name": "devchat-extension",
-  "displayName": "DevChat",
+  "displayName": "DevChat Gossip",
   "description": "Temporary, no-auth chat rooms for VS Code — text, GIFs and audio clips in real time.",
   "version": "0.1.0",
-  "publisher": "devchat",
+  "publisher": "thakur",
   "repository": {
     "type": "git",
     "url": "https://github.com/thakurdotdev/devchat"
@@ -13,8 +13,7 @@
     "vscode": "^1.85.0"
   },
   "categories": [
-    "Other",
-    "Collaboration"
+    "Other"
   ],
   "main": "./dist/extension.js",
   "activationEvents": [
@@ -26,7 +25,7 @@
       "activitybar": [
         {
           "id": "devchat",
-          "title": "DevChat",
+          "title": "DevChat Gossip",
           "icon": "media/icons/chat.svg"
         }
       ]
@@ -64,9 +63,8 @@
       }
     ],
     "configuration": {
-      "title": "DevChat",
+      "title": "DevChat Gossip",
       "properties": {
-
         "devchat.nickname": {
           "type": "string",
           "default": "",
