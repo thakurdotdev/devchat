@@ -10,9 +10,12 @@ import {
 } from '@devchat/shared';
 import {
   AudioEvent,
+  DeleteMessageEvent,
+  EditMessageEvent,
   GifEvent,
   JoinEvent,
   MessageEvent,
+  PinMessageEvent,
   ReactEvent,
   TypingEvent,
 } from '@devchat/shared';
@@ -23,13 +26,16 @@ import type { RoomStore } from '../store/interface';
 import { newId } from '../utils/ids';
 import { RoomHub, type Conn, type WsLike } from './rooms';
 import { RateLimiter } from './rateLimit';
+import { normalizeIp } from '../utils/clientIp';
 
 interface RawWs {
   send(data: string | object): unknown;
   close(code?: number, reason?: string): unknown;
+  remoteAddress?: string;
   data?: {
     id?: string;
     query?: Record<string, string>;
+    remoteAddress?: string;
   };
 }
 
@@ -43,6 +49,10 @@ export function wireWebSocket(app: WsCapableApp, store: RoomStore, config: Confi
 
   /** connId (=== ws.id, stable across events) → conn */
   const connsById = new Map<string, Conn>();
+  const ipByConnId = new Map<string, string>();
+  const connIdsByIp = new Map<string, Set<string>>();
+  const handshakeTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  const frameWindows = new Map<string, { count: number; resetAt: number }>();
 
   function sendError(conn: Conn, code: string, message: string) {
     try {
@@ -74,6 +84,17 @@ export function wireWebSocket(app: WsCapableApp, store: RoomStore, config: Confi
   function dispose(conn: Conn) {
     limiter.dispose(conn.id);
     connsById.delete(conn.id);
+    const handshakeTimer = handshakeTimers.get(conn.id);
+    if (handshakeTimer) clearTimeout(handshakeTimer);
+    handshakeTimers.delete(conn.id);
+    frameWindows.delete(conn.id);
+    const ip = ipByConnId.get(conn.id);
+    ipByConnId.delete(conn.id);
+    if (ip) {
+      const ids = connIdsByIp.get(ip);
+      ids?.delete(conn.id);
+      if (ids?.size === 0) connIdsByIp.delete(ip);
+    }
   }
 
   // ---- dead-socket cleanup: heartbeat every 25s, kill after 60s silence ----
@@ -96,22 +117,83 @@ export function wireWebSocket(app: WsCapableApp, store: RoomStore, config: Confi
   // ---------------- Elysia WS route ----------------
 
   app.ws('/ws', {
+    maxPayloadLength: config.wsMessageBytes,
+    backpressureLimit: config.wsMessageBytes * 8,
+    closeOnBackpressureLimit: true,
+    beforeHandle({ request, set }: { request: Request; set: { status?: any } }) {
+      if (!config.allowedWsOrigins.length) return;
+      const origin = request.headers.get('origin');
+      // Native clients may omit Origin. Browser clients can be restricted to
+      // an explicit operator-maintained list, which supports dynamic webview hosts.
+      if (origin && !config.allowedWsOrigins.includes(origin)) {
+        set.status = 403;
+        return { error: 'ORIGIN_NOT_ALLOWED' };
+      }
+    },
     open(ws: RawWs) {
       const raw = ws as unknown as RawWs;
       const connId = raw.data?.id;
       if (!connId) return; // no id — cannot track this socket
+      const ip = normalizeIp(raw.remoteAddress);
+      if (connsById.size >= config.wsConnectionsGlobal || (connIdsByIp.get(ip)?.size ?? 0) >= config.wsConnectionsPerIp) {
+        raw.close(1013, 'connection limit reached');
+        return;
+      }
       const wrapper: WsLike = {
         send: (data: string) => raw.send(data),
         close: (code?: number, reason?: string) => raw.close(code, reason),
       };
       const conn = hub.register(wrapper, connId);
       connsById.set(connId, conn);
+      ipByConnId.set(connId, ip);
+      const ipConnections = connIdsByIp.get(ip) ?? new Set<string>();
+      ipConnections.add(connId);
+      connIdsByIp.set(ip, ipConnections);
+      handshakeTimers.set(connId, setTimeout(() => {
+        const pending = connsById.get(connId);
+        if (!pending || pending.member) return;
+        pending.ws.close(1008, 'join handshake timed out');
+        hub.disconnect(pending);
+        dispose(pending);
+      }, 10_000));
     },
 
     async message(ws: RawWs, raw: unknown) {
       const conn = connsById.get((ws as unknown as RawWs).data?.id ?? '');
       if (!conn) return;
       conn.lastSeen = Date.now();
+
+      const now = Date.now();
+      const window = frameWindows.get(conn.id);
+      const currentWindow = !window || now >= window.resetAt ? { count: 0, resetAt: now + 60_000 } : window;
+      currentWindow.count++;
+      frameWindows.set(conn.id, currentWindow);
+      if (currentWindow.count > config.wsFramesPerMinute) {
+        sendError(conn, 'RATE_LIMITED', 'You are sending messages too quickly. Please slow down.');
+        conn.ws.close(1013, 'frame rate limit');
+        hub.disconnect(conn);
+        dispose(conn);
+        return;
+      }
+
+      // Bound frames before application parsing and schema validation.
+      try {
+        const frameBytes = typeof raw === 'string'
+          ? new TextEncoder().encode(raw).byteLength
+          : raw instanceof ArrayBuffer ? raw.byteLength
+          : ArrayBuffer.isView(raw) ? raw.byteLength
+          : new TextEncoder().encode(JSON.stringify(raw)).byteLength;
+        if (frameBytes > config.wsMessageBytes) {
+          sendError(conn, ERROR_CODES.INVALID, 'Message is too large');
+          conn.ws.close(1009, 'message too large');
+          hub.disconnect(conn);
+          dispose(conn);
+          return;
+        }
+      } catch {
+        sendError(conn, ERROR_CODES.INVALID, 'Invalid frame');
+        return;
+      }
 
       let frame: unknown;
       try {
@@ -128,14 +210,18 @@ export function wireWebSocket(app: WsCapableApp, store: RoomStore, config: Confi
       // ---- handshake: first frame must be join (or fall back to query params) ----
       if (!conn.member) {
         const query = (ws as unknown as RawWs).data?.query ?? {};
-        const queryUserId = query.userId;
         if (Value.Check(JoinEvent, frame)) {
-          const p = frame as { name: string; color: string; userId?: string };
-          await doJoin(conn, query.room ?? '', p.name, p.color, p.userId || queryUserId);
+          const p = frame as { room?: string; name: string; color: string };
+          await doJoin(conn, p.room ?? query.room ?? '', p.name, p.color);
         } else if (query.room && query.name) {
-          await doJoin(conn, query.room, query.name, query.color || '#7c5cff', queryUserId);
+          await doJoin(conn, query.room, query.name, query.color || '#7c5cff');
         } else {
           sendError(conn, ERROR_CODES.INVALID, 'First frame must be a join event (or provide ?room&name query params)');
+        }
+        if (conn.member) {
+          const timer = handshakeTimers.get(conn.id);
+          if (timer) clearTimeout(timer);
+          handshakeTimers.delete(conn.id);
         }
         return;
       }
@@ -151,9 +237,62 @@ export function wireWebSocket(app: WsCapableApp, store: RoomStore, config: Confi
         case 'message': {
           if (!Value.Check(MessageEvent, frame)) return sendError(conn, ERROR_CODES.INVALID, 'Invalid message payload');
           if (!limiter.consume(conn.id, 'text')) return;
-          const msg = await hub.buildMessage(conn, (frame as { text: string }).text);
+          const payload = frame as { text: string; replyToId?: string };
+          const msg = await hub.buildMessage(conn, payload.text);
+          if (payload.replyToId) {
+            const target = (await store.getMessages(code)).find((item) => item.id === payload.replyToId);
+            if (!target) return sendError(conn, ERROR_CODES.INVALID, 'Reply target is no longer available');
+            msg.replyTo = {
+              id: target.id,
+              name: target.name,
+              text: target.kind === 'text' ? (target.text ?? '') : target.media?.title ?? 'Shared media',
+            };
+          }
           await store.pushMessage(code, msg, config.messageHistory);
           hub.broadcast(code, { type: 'message', ...msg });
+          break;
+        }
+        case 'message.edit': {
+          if (!Value.Check(EditMessageEvent, frame)) return sendError(conn, ERROR_CODES.INVALID, 'Invalid edit payload');
+          if (!limiter.consume(conn.id, 'text')) return;
+          const payload = frame as { messageId: string; text: string };
+          const text = payload.text.trim();
+          if (!text) return sendError(conn, ERROR_CODES.INVALID, 'Message cannot be empty');
+          const msg = (await store.getMessages(code)).find((item) => item.id === payload.messageId);
+          if (!msg || msg.kind !== 'text') return sendError(conn, ERROR_CODES.INVALID, 'Message is no longer available');
+          if (msg.memberId !== conn.member!.id) return sendError(conn, ERROR_CODES.INVALID, 'You can only edit your own messages');
+          if (Date.now() - msg.createdAt > 15 * 60_000) return sendError(conn, ERROR_CODES.INVALID, 'Messages can only be edited for 15 minutes');
+          msg.text = text;
+          msg.editedAt = Date.now();
+          await store.updateMessage(code, msg);
+          hub.broadcast(code, { type: 'message.updated', message: msg });
+          break;
+        }
+        case 'message.delete': {
+          if (!Value.Check(DeleteMessageEvent, frame)) return sendError(conn, ERROR_CODES.INVALID, 'Invalid delete payload');
+          if (!limiter.consume(conn.id, 'text')) return;
+          const payload = frame as { messageId: string };
+          const msg = (await store.getMessages(code)).find((item) => item.id === payload.messageId);
+          if (!msg || msg.kind !== 'text') return sendError(conn, ERROR_CODES.INVALID, 'Message is no longer available');
+          if (msg.memberId !== conn.member!.id) return sendError(conn, ERROR_CODES.INVALID, 'You can only delete your own messages');
+          if (Date.now() - msg.createdAt > 15 * 60_000) return sendError(conn, ERROR_CODES.INVALID, 'Messages can only be deleted for 15 minutes');
+          await store.deleteMessage(code, msg.id);
+          hub.broadcast(code, { type: 'message.deleted', messageId: msg.id });
+          break;
+        }
+        case 'message.pin': {
+          if (!Value.Check(PinMessageEvent, frame)) return sendError(conn, ERROR_CODES.INVALID, 'Invalid pin payload');
+          if (!limiter.consume(conn.id, 'text')) return;
+          const payload = frame as { messageId: string; pinned: boolean };
+          const messages = await store.getMessages(code);
+          const msg = messages.find((item) => item.id === payload.messageId);
+          if (!msg || msg.kind === 'system') return sendError(conn, ERROR_CODES.INVALID, 'Message is no longer available');
+          if (payload.pinned && !msg.pinned && messages.filter((item) => item.pinned).length >= 10) {
+            return sendError(conn, ERROR_CODES.INVALID, 'This room already has 10 pinned messages');
+          }
+          msg.pinned = payload.pinned;
+          await store.updateMessage(code, msg);
+          hub.broadcast(code, { type: 'message.updated', message: msg });
           break;
         }
         case 'gif': {
@@ -213,9 +352,25 @@ export function wireWebSocket(app: WsCapableApp, store: RoomStore, config: Confi
 
   // ---------------- helpers ----------------
 
-  async function doJoin(conn: Conn, room: string, name: string, color: string, userId?: string) {
-    if (!room) return sendError(conn, ERROR_CODES.INVALID, 'Missing room code');
-    const result = await hub.join(conn, room.trim().toUpperCase(), name.trim().slice(0, 32), color, userId);
+  async function doJoin(conn: Conn, room: string, name: string, color: string) {
+    const normalizedRoom = room.trim().toUpperCase();
+    const normalizedName = name.trim();
+    if (!/^(?:[A-HJ-KM-NP-Z2-9]{4}-[A-HJ-KM-NP-Z2-9]{3}|[A-HJ-KM-NP-Z2-9]{4}-[A-HJ-KM-NP-Z2-9]{4}-[A-HJ-KM-NP-Z2-9]{4})$/.test(normalizedRoom)) {
+      return sendError(conn, ERROR_CODES.INVALID, 'Enter a valid room code');
+    }
+    if (!normalizedName || normalizedName.length > 32 || !/^#[0-9a-fA-F]{6}$/.test(color)) {
+      return sendError(conn, ERROR_CODES.INVALID, 'Check your display name and color');
+    }
+    const ip = ipByConnId.get(conn.id) || 'unknown';
+    const quota = await store.consumeRateLimit(`join:${ip}`, config.joinRatePerMinute, 60_000);
+    if (!quota.allowed) {
+      sendError(conn, 'RATE_LIMITED', 'You have joined rooms too quickly. Please wait a moment and try again.');
+      conn.ws.close(1013, 'join rate limit');
+      hub.disconnect(conn);
+      dispose(conn);
+      return;
+    }
+    const result = await hub.join(conn, normalizedRoom, normalizedName, color);
     if (result.error) sendError(conn, result.code, result.message);
   }
 
@@ -230,6 +385,16 @@ export function wireWebSocket(app: WsCapableApp, store: RoomStore, config: Confi
       ...(kind === 'gif' ? { preview: String(frame.preview) } : {}),
       ...(typeof frame.duration === 'number' ? { duration: frame.duration } : {}),
     };
+    const allowedHosts = kind === 'gif' ? ['static.klipy.com'] : ['www.myinstants.com'];
+    const safeUrl = (value: string) => {
+      try {
+        const url = new URL(value);
+        return url.protocol === 'https:' && allowedHosts.includes(url.hostname);
+      } catch { return false; }
+    };
+    if (!safeUrl(media.url) || (kind === 'gif' && !safeUrl(media.preview ?? ''))) {
+      return sendError(conn, ERROR_CODES.INVALID, 'Unsupported media URL');
+    }
     const msg: ChatMessage = {
       id: newId(),
       roomCode: code,

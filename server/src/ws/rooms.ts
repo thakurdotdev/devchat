@@ -55,28 +55,15 @@ export class RoomHub {
     return conn;
   }
 
-  async join(conn: Conn, code: string, name: string, color: string, userId?: string): Promise<ErrorPayloadOr<Welcome>> {
+  async join(conn: Conn, code: string, name: string, color: string): Promise<ErrorPayloadOr<Welcome>> {
     const room = await this.store.getRoom(code);
     if (!room) {
       return { error: true, code: ERROR_CODES.ROOM_NOT_FOUND, message: `Room ${code} does not exist (or expired)` };
     }
 
-    const memberId = (userId && userId.trim()) ? userId.trim().slice(0, 48) : conn.id;
-
-    // If another connection with the same memberId is already present in this room
-    // (e.g. client reloaded or reconnected before dead socket heartbeat clean-up),
-    // cleanly close the old stale connection.
-    for (const existingConn of this.connectionsIn(code)) {
-      if (existingConn.member?.id === memberId && existingConn.id !== conn.id) {
-        try {
-          existingConn.ws.close(1000, 'reconnected');
-        } catch {
-          /* ignore */
-        }
-        this.conns.delete(existingConn.id);
-        this.roomConns.get(code)?.delete(existingConn.id);
-      }
-    }
+    // Identity is connection-scoped. A client supplied ID lets anyone spoof
+    // another participant and force their socket out of the room.
+    const memberId = conn.id;
 
     const members = await this.store.listMembers(code);
     const onlineIds = new Set(this.onlineMemberIds(code));
@@ -96,11 +83,6 @@ export class RoomHub {
 
     // Leaving a previous room first (single-room membership)
     if (conn.roomCode) await this.leave(conn);
-
-    // Revive grace-period rooms on rejoin: TTL resets to full room TTL.
-    if (room.expiresAt - Date.now() < this.config.emptyGraceMs) {
-      await this.store.touchRoom(code, Date.now() + this.config.roomTtlMs);
-    }
 
     conn.roomCode = code;
     conn.member = member;
@@ -148,13 +130,6 @@ export class RoomHub {
     const stillOnline = this.onlineMemberIds(code);
     if (stillOnline.length === 0) {
       this.cancelExpiryWarning(code);
-      // Empty → enter grace period: extend TTL to now + grace, but never past
-      // the hard cap (createdAt + roomTtl).
-      const room = await this.store.getRoom(code);
-      if (room) {
-        const hardCap = room.createdAt + this.config.roomTtlMs;
-        await this.store.touchRoom(code, Math.min(Date.now() + this.config.emptyGraceMs, hardCap));
-      }
     } else {
       const systemMsg = this.systemMessage(code, `${member.name} left`);
       await this.store.pushMessage(code, systemMsg, this.config.messageHistory);
@@ -239,18 +214,36 @@ export class RoomHub {
   /** Warn everyone 2 minutes before the room dies. */
   private scheduleExpiryWarning(code: string, expiresAt: number) {
     this.cancelExpiryWarning(code);
-    const warnAt = expiresAt - EXPIRY_WARNING_BEFORE_MIN * 60_000 - Date.now();
-    if (warnAt <= 0) return; // already inside the warning window
-    const timer = setTimeout(() => {
-      this.warningTimers.delete(code);
-      this.broadcast(code, {
-        type: 'room.expiring',
-        expiresAt,
-        message: `Room ${code} expires in ${EXPIRY_WARNING_BEFORE_MIN} minutes`,
-      });
-    }, warnAt);
-    timer.unref?.();
-    this.warningTimers.set(code, timer);
+    const maxTimerDelay = 2_147_000_000;
+    const warningWindowMs = EXPIRY_WARNING_BEFORE_MIN * 60_000;
+    let warned = false;
+    const schedule = () => {
+      const remaining = expiresAt - Date.now();
+      if (remaining <= 0) {
+        this.warningTimers.delete(code);
+        for (const conn of this.connectionsIn(code)) {
+          try {
+            conn.ws.send(JSON.stringify({ type: 'error', code: ERROR_CODES.ROOM_EXPIRED, message: 'This room has expired' }));
+            conn.ws.close(1008, 'room expired');
+          } catch { /* socket is already closed */ }
+          this.disconnect(conn);
+        }
+        return;
+      }
+      if (!warned && remaining <= warningWindowMs) {
+        warned = true;
+        this.broadcast(code, {
+          type: 'room.expiring',
+          expiresAt,
+          message: `Room ${code} expires in ${Math.max(1, Math.ceil(remaining / 60_000))} minutes`,
+        });
+      }
+      const untilNextStep = warned ? remaining : remaining - warningWindowMs;
+      const timer = setTimeout(schedule, Math.min(Math.max(1, untilNextStep), maxTimerDelay));
+      timer.unref?.();
+      this.warningTimers.set(code, timer);
+    };
+    schedule();
   }
 
   private cancelExpiryWarning(code: string) {

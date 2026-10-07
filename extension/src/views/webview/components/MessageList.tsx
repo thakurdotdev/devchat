@@ -10,9 +10,14 @@ interface Props {
   onReact: (messageId: string, emoji: string) => void;
   isGifBlurred: (messageId: string) => boolean;
   onToggleGifBlur: (messageId: string) => void;
+  onReply: (message: ChatMessage) => void;
+  onEdit: (message: ChatMessage) => void;
+  onDelete: (messageId: string) => void;
+  onPin: (messageId: string, pinned: boolean) => void;
+  emptyLabel?: string;
 }
 
-export function MessageList({ messages, youId, typingIds, memberName, onReact, isGifBlurred, onToggleGifBlur }: Props) {
+export function MessageList({ messages, youId, typingIds, memberName, onReact, isGifBlurred, onToggleGifBlur, onReply, onEdit, onDelete, onPin, emptyLabel }: Props) {
   const listRef = useRef<HTMLDivElement | null>(null);
   const count = messages.length;
 
@@ -26,7 +31,7 @@ export function MessageList({ messages, youId, typingIds, memberName, onReact, i
       {messages.length === 0 && (
         <div class="empty-state">
           <span class="codicon codicon-comment-discussion empty-icon" />
-          <div>No messages yet — say hi!</div>
+          <div>{emptyLabel ?? 'No messages yet — say hi!'}</div>
         </div>
       )}
       {messages.map((m, idx) => {
@@ -49,6 +54,10 @@ export function MessageList({ messages, youId, typingIds, memberName, onReact, i
             onReact={onReact}
             isGifBlurred={isGifBlurred}
             onToggleGifBlur={onToggleGifBlur}
+            onReply={onReply}
+            onEdit={onEdit}
+            onDelete={onDelete}
+            onPin={onPin}
           />
         );
       })}

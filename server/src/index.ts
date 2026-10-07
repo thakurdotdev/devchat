@@ -12,7 +12,7 @@ import { mediaRoutes } from './routes/media';
 import { wireWebSocket } from './ws/handler';
 
 const config = loadConfig();
-const store = await getStore(config.emptyGraceMs);
+const store = await getStore();
 
 const app = new Elysia()
   .use(cors())

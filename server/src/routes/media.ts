@@ -9,6 +9,7 @@ import gifsFixture from '../data/fixtures/gifs.json';
 import soundsFixture from '../data/fixtures/sounds.json';
 import type { Config } from '../config';
 import type { RoomStore } from '../store/interface';
+import { clientIp } from '../utils/clientIp';
 import {
   adaptKlipyResponse,
   adaptMyInstantsResponse,
@@ -34,12 +35,28 @@ function paginate<T>(items: T[], page: number, perPage = 24): T[] {
 
 export function mediaRoutes(store: RoomStore, config: Config) {
   const app = new Elysia({ prefix: '/api/media' });
+  async function allowMedia(request: Request, server: unknown, set: { status?: any; headers: any }) {
+    const quota = await store.consumeRateLimit(`media:${clientIp(request, server, config.trustProxy)}`, config.mediaRatePerMinute, 60_000);
+    if (quota.allowed) return true;
+    set.status = 429;
+    set.headers['retry-after'] = String(Math.max(1, Math.ceil(quota.retryAfterMs / 1000)));
+    return false;
+  }
+  function validQuery(q: string, page: number, set: { status?: any }) {
+    if (q.length > 100 || !Number.isInteger(page) || page < 1 || page > 100) {
+      set.status = 400;
+      return false;
+    }
+    return true;
+  }
 
   // ---------------- GIFs (Klipy) ----------------
 
-  app.get('/gifs/search', async ({ query }) => {
+  app.get('/gifs/search', async ({ query, request, server, set }) => {
     const q = (query.q ?? '').trim();
     const page = Number(query.page ?? 1) || 1;
+    if (!validQuery(q, page, set)) return { error: 'INVALID_QUERY', message: 'Search text must be 100 characters or fewer and page must be from 1 to 100.' };
+    if (!await allowMedia(request, server, set)) return { error: 'RATE_LIMITED', message: 'Media search is temporarily limited. Please wait a moment.' };
     if (!q) return { page, query: q, data: [] };
     const data = await cached(store, 'gif-search', `${q}:${page}`, config.gifCacheTtlSec, async () => {
       if (config.mockMedia) {
@@ -71,8 +88,10 @@ export function mediaRoutes(store: RoomStore, config: Config) {
     return { page, query: q, data };
   });
 
-  app.get('/gifs/trending', async ({ query }) => {
+  app.get('/gifs/trending', async ({ query, request, server, set }) => {
     const page = Number(query.page ?? 1) || 1;
+    if (!validQuery('', page, set)) return { error: 'INVALID_QUERY', message: 'Page must be from 1 to 100.' };
+    if (!await allowMedia(request, server, set)) return { error: 'RATE_LIMITED', message: 'Media search is temporarily limited. Please wait a moment.' };
     const data = await cached(store, 'gif-trending', `${page}`, config.gifCacheTtlSec, async () => {
       if (config.mockMedia) {
         return adaptKlipyResponse({ data: paginate(gifsFixture as KlipyRawItem[], page) });
@@ -91,9 +110,11 @@ export function mediaRoutes(store: RoomStore, config: Config) {
 
   // ---------------- Sounds (MyInstants) ----------------
 
-  app.get('/sounds/search', async ({ query }) => {
+  app.get('/sounds/search', async ({ query, request, server, set }) => {
     const q = (query.q ?? '').trim();
     const page = Number(query.page ?? 1) || 1;
+    if (!validQuery(q, page, set)) return { error: 'INVALID_QUERY', message: 'Search text must be 100 characters or fewer and page must be from 1 to 100.' };
+    if (!await allowMedia(request, server, set)) return { error: 'RATE_LIMITED', message: 'Media search is temporarily limited. Please wait a moment.' };
     if (!q) return { page, query: q, data: [] };
     const data = await cached(store, 'sound-search', `${q}:${page}`, config.soundCacheTtlSec, async () => {
       if (config.mockMedia) {
@@ -125,8 +146,10 @@ export function mediaRoutes(store: RoomStore, config: Config) {
     return { page, query: q, data };
   });
 
-  app.get('/sounds/trending', async ({ query }) => {
+  app.get('/sounds/trending', async ({ query, request, server, set }) => {
     const page = Number(query.page ?? 1) || 1;
+    if (!validQuery('', page, set)) return { error: 'INVALID_QUERY', message: 'Page must be from 1 to 100.' };
+    if (!await allowMedia(request, server, set)) return { error: 'RATE_LIMITED', message: 'Media search is temporarily limited. Please wait a moment.' };
     const data = await cached(store, 'sound-trending', `${page}`, config.soundCacheTtlSec, async () => {
       if (config.mockMedia) {
         return adaptMyInstantsResponse({ data: paginate(soundsFixture as MyInstantsRawItem[], page) });

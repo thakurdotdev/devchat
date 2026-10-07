@@ -1,8 +1,9 @@
 {
   "name": "devchat-extension",
   "displayName": "DevChat Gossip",
-  "description": "Temporary, no-auth chat rooms for VS Code — text, GIFs and audio clips in real time.",
-  "version": "0.1.1",
+  "description": "Lightweight, temporary team chat rooms inside VS Code.",
+  "icon": "media/icons/chat.png",
+  "version": "0.1.2",
   "publisher": "thakur",
   "repository": {
     "type": "git",
@@ -58,8 +59,8 @@
         "title": "DevChat: Leave Room"
       },
       {
-        "command": "devchat.copyInvite",
-        "title": "DevChat: Copy Invite Link"
+        "command": "devchat.copyRoomCode",
+        "title": "DevChat: Copy Room Code"
       }
     ],
     "configuration": {

@@ -1,6 +1,6 @@
 /**
  * DevChat webview app (Preact). Owns the WebSocket connection; talks to the
- * extension host over postMessage for invite-copy, leave, nickname edits.
+ * extension host over postMessage for room-code copy, leave, and preferences.
  */
 import { render } from 'preact';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
@@ -57,6 +57,9 @@ function App() {
   const [identity, setIdentity] = useState<Identity>({ name: '…', color: '#7c5cff' });
   const [isFirstRun, setIsFirstRun] = useState(false);
   const [roomCode, setRoomCode] = useState<string | null>(null);
+  const [roomName, setRoomName] = useState('');
+  const [lastRoomCode, setLastRoomCode] = useState<string | null>(null);
+  const [lastRoomName, setLastRoomName] = useState('');
   const [status, setStatus] = useState<SocketStatus>('disconnected');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
@@ -65,6 +68,11 @@ function App() {
   const [typingIds, setTypingIds] = useState<string[]>([]);
   const [picker, setPicker] = useState<PickerTab>(null);
   const [showMembers, setShowMembers] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
+  const [showPinned, setShowPinned] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [replyTarget, setReplyTarget] = useState<ChatMessage | null>(null);
+  const [editingMessage, setEditingMessage] = useState<ChatMessage | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [tick, setTick] = useState(0); // drives the expiry countdown re-render
 
@@ -178,6 +186,12 @@ function App() {
             }
             break;
           }
+          case 'message.updated':
+            if (frame.message) mergeMessages([frame.message as ChatMessage]);
+            break;
+          case 'message.deleted':
+            setMessages((prev) => prev.filter((message) => message.id !== frame.messageId));
+            break;
           case 'typing':
             markTyping(String(frame.memberId));
             break;
@@ -224,6 +238,9 @@ function App() {
           setIdentity(msg.identity);
           setIsFirstRun(!!msg.identity?.isFirstRun);
           setRoomCode(msg.roomCode);
+          setRoomName(String(msg.roomName ?? ''));
+          setLastRoomCode(msg.lastRoomCode ?? msg.roomCode ?? null);
+          setLastRoomName(String(msg.lastRoomName ?? msg.roomName ?? ''));
           if (msg.roomCode && msg.serverUrl) connect(msg.serverUrl, msg.roomCode, msg.identity);
           break;
         case 'mediaConfig':
@@ -238,9 +255,17 @@ function App() {
               setServerUrl(msg.serverUrl);
             }
             setRoomCode(msg.roomCode);
+            setRoomName(String(msg.roomName ?? ''));
+            setLastRoomCode(msg.roomCode);
+            setLastRoomName(String(msg.roomName ?? ''));
             setMessages([]);
             setMembers([]);
             setYouId(null);
+            setReplyTarget(null);
+            setEditingMessage(null);
+            setSearchQuery('');
+            setShowSearch(false);
+            setShowPinned(false);
             if (effectiveUrl) {
               connect(effectiveUrl, msg.roomCode, identityRef.current);
             }
@@ -254,13 +279,24 @@ function App() {
             connect(serverUrlRef.current, roomCodeRef.current, msg.identity);
           }
           break;
+        case 'deleteMessage':
+          socketRef.current?.send({ type: 'message.delete', messageId: msg.messageId });
+          break;
         case 'leave':
           socketRef.current?.close();
           connectionKeyRef.current = '';
           setRoomCode(null);
+          setRoomName('');
+          setLastRoomCode(msg.lastRoomCode ?? roomCodeRef.current);
+          setLastRoomName(String(msg.lastRoomName ?? ''));
           setMessages([]);
           setMembers([]);
           setYouId(null);
+          setReplyTarget(null);
+          setEditingMessage(null);
+          setSearchQuery('');
+          setShowSearch(false);
+          setShowPinned(false);
           setStatus('disconnected');
           break;
       }
@@ -329,7 +365,16 @@ function App() {
 
   const sendText = (text: string) => {
     vscode.postMessage({ cmd: 'markRead' });
-    socketRef.current?.send({ type: 'message', text });
+    const sent = socketRef.current?.send({
+      type: 'message', text,
+      ...(replyTarget ? { replyToId: replyTarget.id } : {}),
+    });
+    if (sent) setReplyTarget(null);
+  };
+  const editText = (text: string) => {
+    if (!editingMessage) return;
+    socketRef.current?.send({ type: 'message.edit', messageId: editingMessage.id, text });
+    setEditingMessage(null);
   };
   const sendTyping = () => {
     vscode.postMessage({ cmd: 'markRead' });
@@ -351,6 +396,10 @@ function App() {
   const react = (messageId: string, emoji: string) => {
     socketRef.current?.send({ type: 'react', messageId, emoji });
   };
+  const pinMessage = (messageId: string, pinned: boolean) => {
+    socketRef.current?.send({ type: 'message.pin', messageId, pinned });
+  };
+  const requestDelete = (messageId: string) => vscode.postMessage({ cmd: 'deleteMessage', messageId });
   const isGifBlurred = useCallback((messageId: string) => gifBlurOverrides[messageId] ?? blurGifs, [gifBlurOverrides, blurGifs]);
   const toggleGifBlur = useCallback((messageId: string) => {
     setGifBlurOverrides((current) => ({ ...current, [messageId]: !isGifBlurred(messageId) }));
@@ -368,6 +417,17 @@ function App() {
     [members, messages, youId, identity.name],
   );
 
+  const visibleMessages = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return messages.filter((message) => {
+      if (showPinned && !message.pinned) return false;
+      if (!query) return true;
+      const searchable = `${message.name} ${message.text ?? ''} ${message.media?.title ?? ''}`.toLowerCase();
+      return searchable.includes(query);
+    });
+  }, [messages, searchQuery, showPinned]);
+  const pinnedCount = messages.filter((message) => message.pinned).length;
+
   if (!ready) {
     return <div class="boot">DevChat loading…</div>;
   }
@@ -384,7 +444,7 @@ function App() {
           <span class="codicon codicon-comment-discussion welcome-icon" />
           <h3>DevChat</h3>
         </div>
-        <p class="welcome-desc">Temporary, no-auth chat rooms for your team — right inside VS Code.</p>
+        <p class="welcome-desc">Create a room for your team or join one with a room code.</p>
         <div class="welcome-actions">
           <button class="primary-btn" onClick={() => vscode.postMessage({ cmd: 'createRoom' })}>
             <span class="codicon codicon-add" /> Create a room
@@ -392,6 +452,12 @@ function App() {
           <button class="secondary-btn" onClick={() => vscode.postMessage({ cmd: 'showJoin' })}>
             <span class="codicon codicon-plug" /> Join with code
           </button>
+          {lastRoomCode && (
+            <button class="secondary-btn" onClick={() => vscode.postMessage({ cmd: 'joinRoom', code: lastRoomCode })}>
+              <span class="codicon codicon-history" />
+              <span class="last-room-label">Rejoin {lastRoomName || lastRoomCode}</span>
+            </button>
+          )}
         </div>
         <p class="hint">
           Chatting as <b style={`color:${identity.color}`}>{identity.name}</b>
@@ -402,50 +468,79 @@ function App() {
     );
   }
 
-  const minutesLeft = expiresAt ? Math.max(0, Math.round((expiresAt - Date.now()) / 60000)) : null;
+  const timeRemaining = expiresAt ? formatRemainingTime(expiresAt - Date.now()) : null;
   void tick;
 
   return (
     <div class="chat">
-      <div class="header">
-        <span class="status-dot" data-status={status} title={status} />
-        <span class="room-code" title="Room code">{roomCode}</span>
-        <span class="spacer" />
-        {minutesLeft !== null && status === 'connected' && (
-          <span class="expiry" title="Room self-destructs at expiry">
-            <span class="codicon codicon-clock" /> {minutesLeft}m
-          </span>
-        )}
-        <button class="icon-btn" title="Members" onClick={() => setShowMembers((v) => !v)}>
-          <span class="codicon codicon-organization" /> {members.length}
-        </button>
-        <button
-          class={`icon-btn media-toggle ${blurGifs ? 'active' : ''}`}
-          title={`${blurGifs ? 'Disable' : 'Enable'} GIF blur`}
-          aria-label={`${blurGifs ? 'Disable' : 'Enable'} GIF blur`}
-          aria-pressed={blurGifs}
-          onClick={() => vscode.postMessage({ cmd: 'setBlurGifs', value: !blurGifs })}
-        >
-          <span class={`codicon ${blurGifs ? 'codicon-eye-closed' : 'codicon-eye'}`} />
-        </button>
-        <button class="icon-btn" title="Copy room code" aria-label="Copy room code" onClick={() => vscode.postMessage({ cmd: 'copyInvite' })}>
-          <span class="codicon codicon-copy" />
-        </button>
-        <button class="icon-btn" title="Leave room" onClick={() => vscode.postMessage({ cmd: 'leave' })}>
-          <span class="codicon codicon-close" />
-        </button>
-      </div>
+      <header class="header">
+        <div class="room-heading">
+          <span class="status-dot" data-status={status} title={status} />
+          <div class="room-meta">
+            <span class="room-title" title={roomName || 'DevChat room'}>{roomName || 'DevChat room'}</span>
+            <span class="room-code" title="Room code">{roomCode}</span>
+          </div>
+          <span class="connection-state" data-status={status}>{statusLabel(status)}</span>
+        </div>
+        <div class="room-toolbar">
+          {timeRemaining !== null && status === 'connected' && (
+            <span class="expiry" title="Room expires automatically">
+              <span class="codicon codicon-clock" /> {timeRemaining} left
+            </span>
+          )}
+          <div class="room-actions">
+            <button class={`icon-btn ${showSearch ? 'media-toggle active' : ''}`} title="Search recent messages" aria-label="Search recent messages" aria-expanded={showSearch} onClick={() => { setShowSearch((value) => !value); setSearchQuery(''); }}>
+              <span class="codicon codicon-search" />
+            </button>
+            <button class={`icon-btn ${showPinned ? 'media-toggle active' : ''}`} title="Pinned messages" aria-label={`Pinned messages, ${pinnedCount}`} aria-expanded={showPinned} onClick={() => setShowPinned((value) => !value)}>
+              <span class="codicon codicon-pinned" />{pinnedCount > 0 && <span>{pinnedCount}</span>}
+            </button>
+            <button class="icon-btn member-toggle" title="Room members" aria-label={`Room members, ${members.length} online`} aria-expanded={showMembers} onClick={() => setShowMembers((value) => !value)}>
+              <span class="codicon codicon-organization" /> <span>{members.length}</span>
+            </button>
+            <button
+              class={`icon-btn media-toggle ${blurGifs ? 'active' : ''}`}
+              title={`${blurGifs ? 'Disable' : 'Enable'} GIF blur`}
+              aria-label={`${blurGifs ? 'Disable' : 'Enable'} GIF blur`}
+              aria-pressed={blurGifs}
+              onClick={() => vscode.postMessage({ cmd: 'setBlurGifs', value: !blurGifs })}
+            >
+              <span class={`codicon ${blurGifs ? 'codicon-eye-closed' : 'codicon-eye'}`} />
+            </button>
+            <button class="icon-btn" title="Copy room code" aria-label="Copy room code" onClick={() => vscode.postMessage({ cmd: 'copyRoomCode' })}>
+              <span class="codicon codicon-copy" />
+            </button>
+            <button class="icon-btn leave-btn" title="Leave room" aria-label="Leave room" onClick={() => vscode.postMessage({ cmd: 'leave' })}>
+              <span class="codicon codicon-sign-out" />
+            </button>
+          </div>
+        </div>
+      </header>
 
       {showMembers && <MembersPanel members={members} onEditNickname={() => vscode.postMessage({ cmd: 'setNickname' })} />}
 
+      {showSearch && (
+        <div class="message-search">
+          <span class="codicon codicon-search" />
+          <input type="search" aria-label="Search recent messages" placeholder="Search recent messages" value={searchQuery} onInput={(event) => setSearchQuery((event.target as HTMLInputElement).value)} />
+          {searchQuery && <span class="search-count">{visibleMessages.length}</span>}
+          <button class="icon-btn" title="Close search" aria-label="Close search" onClick={() => { setShowSearch(false); setSearchQuery(''); }}><span class="codicon codicon-close" /></button>
+        </div>
+      )}
+
       <MessageList
-        messages={messages}
+        messages={visibleMessages}
         youId={youId}
         typingIds={typingIds}
         memberName={memberName}
         onReact={react}
         isGifBlurred={isGifBlurred}
         onToggleGifBlur={toggleGifBlur}
+        onReply={setReplyTarget}
+        onEdit={(message) => { setReplyTarget(null); setEditingMessage(message); }}
+        onDelete={requestDelete}
+        onPin={pinMessage}
+        emptyLabel={searchQuery ? 'No messages match your search.' : showPinned ? 'No pinned messages in this room.' : undefined}
       />
 
       <div class="composer">
@@ -473,6 +568,12 @@ function App() {
           onOpenAudio={() => setPicker((p) => (p === 'audio' ? null : 'audio'))}
           onClosePickers={() => setPicker(null)}
           disabled={status !== 'connected'}
+          replyTo={replyTarget ? { name: replyTarget.name, text: replyTarget.kind === 'text' ? (replyTarget.text ?? '') : replyTarget.media?.title ?? 'Shared media' } : null}
+          onCancelReply={() => setReplyTarget(null)}
+          editText={editingMessage?.text ?? null}
+          onEdit={editText}
+          onCancelEdit={() => setEditingMessage(null)}
+          memberNames={members.map((member) => member.name)}
         />
       </div>
 
@@ -535,3 +636,24 @@ function NicknameScreen({ identity, vscode: vsApi, onDone }: NicknameScreenProps
 }
 
 render(<App />, document.getElementById('root')!);
+
+function statusLabel(status: SocketStatus): string {
+  switch (status) {
+    case 'connected': return 'Connected';
+    case 'connecting': return 'Connecting';
+    case 'reconnecting': return 'Reconnecting';
+    case 'error': return 'Connection issue';
+    default: return 'Disconnected';
+  }
+}
+
+function formatRemainingTime(ms: number): string {
+  const minutes = Math.max(0, Math.floor(ms / 60_000));
+  if (minutes >= 24 * 60) {
+    const days = Math.floor(minutes / (24 * 60));
+    const hours = Math.floor((minutes % (24 * 60)) / 60);
+    return `${days}d ${hours}h`;
+  }
+  if (minutes >= 60) return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+  return `${minutes}m`;
+}

@@ -1,6 +1,48 @@
-<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <path d="M4 4h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H9l-4.6 3.7A1 1 0 0 1 2.8 20V6a2 2 0 0 1 1.2-2Z"
-        stroke="#C5C5C5" stroke-width="1.2" stroke-linejoin="round" fill="none"/>
-  <line x1="8" y1="9" x2="16" y2="9" stroke="#C5C5C5" stroke-width="1.2" stroke-linecap="round"/>
-  <line x1="8" y1="12.5" x2="13" y2="12.5" stroke="#C5C5C5" stroke-width="1.2" stroke-linecap="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <rect width="1024" height="1024" rx="170" fill="#000"/>
+
+  <!-- Left bracket -->
+  <path d="M415 270
+           L225 415
+           Q205 430 205 455
+           L205 650
+           Q205 675 225 690
+           L415 835
+           Q440 854 440 820
+           L440 735
+           Q440 715 423 702
+           L310 615
+           Q295 603 295 580
+           L295 525
+           Q295 502 310 490
+           L423 403
+           Q440 390 440 370
+           L440 285
+           Q440 251 415 270Z"
+        fill="#fff"/>
+
+  <!-- Right bracket -->
+  <path d="M609 270
+           L799 415
+           Q819 430 819 455
+           L819 650
+           Q819 675 799 690
+           L609 835
+           Q584 854 584 820
+           L584 735
+           Q584 715 601 702
+           L714 615
+           Q729 603 729 580
+           L729 525
+           Q729 502 714 490
+           L601 403
+           Q584 390 584 370
+           L584 285
+           Q584 251 609 270Z"
+        fill="#fff"/>
+
+  <!-- Chat / activity dots -->
+  <circle cx="420" cy="552" r="38" fill="#fff"/>
+  <circle cx="512" cy="552" r="38" fill="#fff"/>
+  <circle cx="604" cy="552" r="38" fill="#fff"/>
 </svg>

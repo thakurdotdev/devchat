@@ -7,6 +7,7 @@ import type { ChatMessage, Member, Room } from '@devchat/shared';
 export interface CreateRoomOpts {
   ttlMs: number;
   hostSecret: string;
+  name?: string;
 }
 
 export interface RoomStore {
@@ -16,8 +17,6 @@ export interface RoomStore {
   getRoom(code: string): Promise<(Room & { hostSecret?: string }) | null>;
   deleteRoom(code: string): Promise<void>;
   listRoomCodes(): Promise<string[]>;
-  touchRoom(code: string, expiresAt: number): Promise<void>;
-
   /** Persist a fully-formed room (code assigned by utils/ids.ts). */
   saveRoom(room: Room & { hostSecret: string }): Promise<void>;
 
@@ -30,8 +29,12 @@ export interface RoomStore {
   getMessages(code: string): Promise<ChatMessage[]>;
   /** Persist reaction updates onto a stored message. */
   updateMessage(code: string, msg: ChatMessage): Promise<void>;
+  deleteMessage(code: string, messageId: string): Promise<void>;
 
   /** Generic KV cache (used by the media proxy). */
   cacheSet(key: string, value: string, ttlSec: number): Promise<void>;
   cacheGet(key: string): Promise<string | null>;
+
+  /** Atomically consume one shared rate-limit token across server instances. */
+  consumeRateLimit(key: string, limit: number, windowMs: number): Promise<{ allowed: boolean; retryAfterMs: number }>;
 }

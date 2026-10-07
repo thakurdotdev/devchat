@@ -899,3 +899,115 @@ button.link-btn:hover {
 .emoji-grid::-webkit-scrollbar-thumb:hover {
   background: var(--vscode-scrollbarSlider-hoverBackground);
 }
+
+/* Sidebar production polish: keep hierarchy clear in narrow VS Code views. */
+:root {
+  --chat-border: var(--vscode-panel-border, var(--vscode-widget-border, rgba(128, 128, 128, .22)));
+  --chat-hover: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, .18));
+  --chat-surface: var(--vscode-editorWidget-background, var(--vscode-sideBar-background));
+}
+html, body { height: 100%; overflow: hidden; }
+body { line-height: 1.45; }
+#root { min-height: 0; }
+button:focus-visible, input:focus-visible, textarea:focus-visible, .audio-progress-bar:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
+}
+.chat { min-height: 0; }
+.header {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 7px;
+  padding: 9px 10px 8px;
+  background: var(--vscode-sideBar-background);
+  border-bottom: 1px solid var(--chat-border);
+  flex: 0 0 auto;
+}
+.room-heading, .room-toolbar { display: flex; align-items: center; min-width: 0; }
+.room-heading { gap: 8px; min-height: 28px; }
+.room-meta { display: flex; flex: 1 1 auto; flex-direction: column; min-width: 0; line-height: 1.2; }
+.room-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; }
+.room-code { font-size: 11px; font-weight: 600; letter-spacing: .045em; font-variant-numeric: tabular-nums; }
+.status-dot { width: 7px; height: 7px; flex: 0 0 auto; }
+.connection-state { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; color: var(--vscode-descriptionForeground); font-size: 10px; white-space: nowrap; flex: 0 0 auto; }
+.connection-state::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.connection-state[data-status='connected'] { color: var(--vscode-testing-iconPassed, #4caf50); }
+.connection-state[data-status='connecting'], .connection-state[data-status='reconnecting'] { color: var(--vscode-testing-iconQueued, #d99b30); }
+.connection-state[data-status='error'] { color: var(--vscode-testing-iconFailed, #e5534b); }
+.connection-state[data-status='disconnected'] { color: var(--vscode-disabledForeground, #888); }
+.room-toolbar { gap: 6px; justify-content: space-between; min-height: 28px; }
+.room-actions { display: flex; align-items: center; gap: 3px; }
+.expiry { flex: 0 0 auto; margin: 0; gap: 5px; font-size: 10px; white-space: nowrap; }
+.room-actions .icon-btn { min-width: 28px; min-height: 27px; justify-content: center; padding: 4px 6px; border-radius: 4px; color: var(--vscode-icon-foreground, var(--vscode-foreground)); }
+.room-actions .icon-btn:hover { background: var(--chat-hover); }
+.member-toggle { color: var(--vscode-descriptionForeground); gap: 4px; }
+.member-toggle[aria-expanded='true'], .media-toggle.active { color: var(--vscode-textLink-foreground); background: var(--chat-hover); }
+.leave-btn { color: var(--vscode-descriptionForeground); }
+.leave-btn:hover { color: var(--vscode-errorForeground, var(--vscode-foreground)) !important; }
+.members-panel { padding: 9px 12px 10px; background: var(--chat-surface); border-bottom: 1px solid var(--chat-border); }
+.members-title { margin-bottom: 6px; font-size: 10px; letter-spacing: .04em; }
+.member-row { padding: 4px 0; }
+.member-dot { width: 7px; height: 7px; }
+.member-edit { margin-top: 7px; }
+.message-list { gap: 10px; padding: 14px 10px 12px; overscroll-behavior: contain; }
+.system-row { padding: 2px 8px; font-size: 10px; }
+.bubble-row { max-width: 94%; }
+.bubble { padding: 7px 9px; border-radius: 10px; }
+.bubble-row.mine .bubble { background: var(--vscode-input-background, var(--chat-surface)); }
+.bubble-head { gap: 6px; margin-bottom: 3px; }
+.author { font-size: 11px; }
+.time, .edited-label, .pinned-label { font-size: 10px; }
+.text { line-height: 1.5; }
+.gif { max-width: min(260px, 76vw); max-height: 260px; }
+.audio-player { min-width: min(200px, 62vw); }
+.quick-react { border-radius: 7px; box-shadow: 0 3px 12px rgba(0, 0, 0, .22); }
+.quick-react button { min-width: 26px; min-height: 26px; }
+.empty-state { max-width: 220px; margin: auto; line-height: 1.5; }
+.empty-icon { display: block; font-size: 24px !important; }
+.input-area { padding: 5px 8px 8px; border-top: 1px solid var(--chat-border); background: var(--vscode-sideBar-background); flex: 0 0 auto; }
+.input-tools { display: flex; align-items: center; gap: 3px; padding: 0 2px 4px; }
+.input-tools .tab { width: 27px; height: 25px; min-height: 25px; font-size: 12px; color: var(--vscode-descriptionForeground); }
+.gif-tab-label { font-size: 10px; font-weight: 700; letter-spacing: .02em; }
+.input-tools .tab.active { color: var(--vscode-textLink-foreground); background: var(--chat-hover); }
+.input-row { display: flex; align-items: flex-end; gap: 5px; padding: 0; }
+.chat-input { max-height: 120px; min-height: 32px; resize: none; line-height: 1.4; }
+.send-btn { flex: 0 0 32px; }
+.input-hint { padding: 4px 2px 0; color: var(--vscode-descriptionForeground); font-size: 10px; }
+.compose-context { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 6px; padding: 6px 8px; border-left: 2px solid var(--vscode-textLink-foreground); background: var(--chat-surface); }
+.compose-context-copy { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.compose-context-copy strong { font-size: 11px; font-weight: 600; }
+.compose-context-copy span { overflow: hidden; color: var(--vscode-descriptionForeground); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.mention-menu { display: flex; flex-direction: column; gap: 1px; max-height: 136px; margin: 0 0 6px; padding: 4px; overflow: auto; border: 1px solid var(--chat-border); border-radius: 5px; background: var(--chat-surface); box-shadow: 0 3px 12px rgba(0, 0, 0, .18); }
+.mention-menu button { padding: 5px 7px; text-align: left; background: transparent; color: var(--vscode-foreground); }
+.mention-menu button:hover { background: var(--chat-hover); }
+.input-area .emoji-grid { max-height: 110px; }
+.message-search { display: flex; align-items: center; gap: 7px; min-height: 36px; padding: 4px 8px; border-bottom: 1px solid var(--chat-border); background: var(--vscode-sideBar-background); }
+.message-search > .codicon { color: var(--vscode-descriptionForeground); }
+.message-search input { flex: 1; min-width: 0; padding: 4px 6px; border: 1px solid var(--chat-border); border-radius: 4px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); font: inherit; font-size: 11px; }
+.search-count { color: var(--vscode-descriptionForeground); font-size: 10px; }
+.message-actions { position: absolute; z-index: 2; top: -12px; right: 5px; display: flex; align-items: center; gap: 1px; padding: 2px; border: 1px solid var(--chat-border); border-radius: 6px; background: var(--chat-surface); box-shadow: 0 2px 8px rgba(0, 0, 0, .2); }
+.message-actions > button, .quick-react-wrap > button { display: inline-flex; align-items: center; justify-content: center; width: 25px; height: 24px; padding: 0; color: var(--vscode-descriptionForeground); background: transparent; }
+.message-actions button:hover { color: var(--vscode-foreground); background: var(--chat-hover); }
+.message-actions .delete-action:hover { color: var(--vscode-errorForeground); }
+.quick-react-wrap { position: relative; }
+.quick-react-wrap .quick-react { position: absolute; right: 0; bottom: 27px; display: flex; gap: 2px; padding: 3px; border: 1px solid var(--chat-border); background: var(--chat-surface); }
+.quick-react-wrap .quick-react button { border-radius: 4px; }
+.reply-quote { display: flex; flex-direction: column; gap: 1px; margin-bottom: 5px; padding: 4px 6px; border-left: 2px solid var(--vscode-textLink-foreground); color: var(--vscode-descriptionForeground); background: var(--chat-surface); font-size: 10px; }
+.reply-quote strong { color: var(--vscode-foreground); font-size: 10px; }
+.reply-quote span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pinned-label { color: var(--vscode-textLink-foreground); }
+.code-block { max-width: 100%; margin: 6px 0; padding: 8px; overflow-x: auto; border: 1px solid var(--chat-border); border-radius: 5px; background: var(--vscode-textCodeBlock-background, var(--chat-surface)); font-family: var(--vscode-editor-font-family, monospace); font-size: 11px; white-space: pre; }
+.toasts { width: calc(100% - 20px); bottom: 72px; }
+.toast { border-radius: 5px; }
+.last-room-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 280px) {
+  .header { padding-left: 8px; padding-right: 8px; }
+  .expiry { display: none; }
+  .room-toolbar { justify-content: flex-end; }
+  .message-list { padding-left: 8px; padding-right: 8px; }
+  .input-area { padding-left: 7px; padding-right: 7px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; }
+}

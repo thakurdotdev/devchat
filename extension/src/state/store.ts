@@ -14,6 +14,9 @@ export interface MemberLite {
 
 export interface SessionState {
   roomCode: string | null;
+  roomName: string;
+  lastRoomCode: string | null;
+  lastRoomName: string;
   status: ConnectionStatus;
   members: MemberLite[];
   expiresAt: number | null;
@@ -34,7 +37,7 @@ class Emitter {
 
 export class GlobalStore {
   readonly changes = new Emitter();
-  state: SessionState = { roomCode: null, status: 'disconnected', members: [], expiresAt: null };
+  state: SessionState = { roomCode: null, roomName: '', lastRoomCode: null, lastRoomName: '', status: 'disconnected', members: [], expiresAt: null };
 
   update(patch: Partial<SessionState>) {
     this.state = { ...this.state, ...patch };

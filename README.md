@@ -41,8 +41,13 @@ bun run compile             # bundles dist/extension.js + dist/webview.js
 ```
 
 In VS Code: click the DevChat icon in the activity bar → **Create a room** →
-share the invite. Teammates **Join Room** with the code (or click a
+optionally name it and share the room code. Teammates **Join Room** with the code (or click a
 `vscode://devchat.devchat/join/CODE` deep link).
+
+Recent messages can be searched and pinned messages filtered from the room header. Pin up to 10 room messages. Reply to a message from its action bar; edit and delete are available on your own text messages for 15 minutes. Use `Shift+Enter` for multiline messages, triple backticks for code blocks, and `@` to mention a room member.
+The room header shows its optional name and keeps actions on a separate row for
+narrow sidebars. Leaving asks for confirmation; the lobby keeps a one-click
+rejoin action for the most recent room.
 
 ### Configuration
 
@@ -55,10 +60,26 @@ share the invite. Teammates **Join Room** with the code (or click a
 See `server/.env.example`. Highlights:
 
 - `REDIS_URL` — if set _and_ reachable, the Redis store is used; otherwise the
-  in-memory store runs (with a 15-min empty-room grace + hard room TTL).
+  in-memory store runs. Redis is required to preserve rooms across server restarts.
+- `ROOM_TTL_HOURS` — default room lifetime (24 hours by default).
+- `MAX_ROOM_TTL_HOURS` — maximum lifetime users may select when creating rooms
+  (2160 hours / 90 days by default, with a hard maximum of one year).
 - `MOCK_MEDIA=true` — serve bundled fixture GIFs/sounds instead of calling the
   upstream APIs (`klipy.thakur.dev` / `myinstants.thakur.dev`). Great for
   offline dev; set `false` in production to proxy the real APIs.
+- Abuse controls are configurable in `server/.env.example`: room creation,
+  lookups, joins, media requests, WebSocket connections, frame rate, and frame
+  size. Defaults are sized for ordinary team use. Redis makes IP quotas shared
+  across instances; in-memory mode limits only that server process.
+- `TRUST_PROXY=true` uses `CF-Connecting-IP` or the first `X-Forwarded-For`
+  address for IP limits. Enable it only when the app is reachable through a
+  trusted proxy that overwrites those headers. Otherwise clients can spoof them.
+- `ALLOWED_WS_ORIGINS` optionally restricts browser WebSocket origins by exact
+  comma-separated match. Leave empty for VS Code's dynamically generated
+  webview origins; native clients without an `Origin` header remain supported.
+- Room codes are capability secrets: use TLS in production and avoid posting
+  room codes in public channels. New rooms use 12-character codes; existing
+  7-character rooms remain joinable until they expire.
 
 ## Architecture notes
 
@@ -74,17 +95,23 @@ See `server/.env.example`. Highlights:
   with TTL caching. `server/src/utils/adapters.ts` normalizes raw Klipy /
   MyInstants payloads into one shape (`preview` jpg for the picker grid,
   `mp4 ?? gif` for sent messages) so upstream drift never leaks downstream.
-- **Room lifecycle** — rooms live 24h max (hard TTL). When the last person
-  leaves, a 15-min grace timer runs; anyone rejoining revives the room to full
-  TTL. Everyone gets a `room.expiring` warning 2 minutes before death.
-- **Rate limiting** — token bucket per connection: 10 text msgs / 5 s, 5 media
-  msgs / 10 s. Violations → `error` frame; 3rd strike → kicked.
+- **Room lifecycle** — the creator selects a lifetime, bounded by
+  `MAX_ROOM_TTL_HOURS`. Rooms remain joinable while empty until that expiry.
+  Redis expires room, member, and message keys directly; the memory store uses
+  one shared 30-second cleanup sweep. Active members receive an expiry warning
+  2 minutes before the room closes. No per-room polling runs while rooms are idle.
+- **Rate limiting** — per-connection message limits plus shared per-IP quotas
+  for room creation, lookup, joining, and media requests. WebSocket peers are
+  capped by IP and globally, pre-join sockets time out after 10 seconds, and
+  frames are bounded to 16 KiB by default. Redis-backed quotas are atomic across
+  server instances.
 
 ### REST API
 
 | Method | Route                         | Description                            |
 | ------ | ----------------------------- | -------------------------------------- |
-| `POST` | `/api/rooms`                  | Create room → `{ code, expiresAt }`    |
+| `GET`  | `/api/rooms/policy`           | Room duration policy and storage durability |
+| `POST` | `/api/rooms`                  | Create room with `{ ttlHours }` → code and expiry |
 | `GET`  | `/api/rooms/:code`            | Room info (exists? member count? TTL?) |
 | `GET`  | `/api/media/gifs/search?q=`   | GIF search (proxied Klipy)             |
 | `GET`  | `/api/media/gifs/trending`    | GIF trending                           |
@@ -94,7 +121,8 @@ See `server/.env.example`. Highlights:
 
 ### WebSocket
 
-Single endpoint: `ws://host/ws?room=CODE&name=NICKNAME&color=HEX`.
+Single endpoint: `wss://host/ws`; the first `join` frame carries the room code,
+display name, and color so these values do not appear in proxy URL logs.
 Client events: `join`, `message`, `gif`, `audio`, `typing`, `react`, `leave`,
 `ping`. Server events: `welcome`, `member.joined`, `member.left`, `message`,
 `gif`, `audio`, `typing`, `react`, `error`, `room.expiring`. All inbound

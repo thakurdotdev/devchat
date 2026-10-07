@@ -1,7 +1,7 @@
 /**
  * DevChat — extension entrypoint.
- * Activation: sidebar webview view opened, or a vscode:// invite link clicked.
- * The extension host does REST only (create/join room, invite); all realtime
+ * Activation: sidebar webview view opened, or a vscode:// room-code link clicked.
+ * The extension host does REST only (create/join room); all realtime
  * traffic lives inside the webview (single WS, single reconnect loop).
  */
 import * as vscode from 'vscode';
@@ -10,7 +10,7 @@ import { RoomsTreeProvider } from './views/sidebar/RoomsTreeProvider';
 import { createRoomCommand } from './commands/createRoom';
 import { joinRoomCommand } from './commands/joinRoom';
 import { leaveRoomCommand } from './commands/leaveRoom';
-import { copyInviteCommand } from './commands/copyInvite';
+import { copyRoomCodeCommand } from './commands/copyRoomCode';
 import { restoreRoom } from './state/session';
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -40,7 +40,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('devchat.createRoom', () => createRoomCommand(context, chatProvider)),
     vscode.commands.registerCommand('devchat.joinRoom', (code?: string) => joinRoomCommand(context, chatProvider, code)),
     vscode.commands.registerCommand('devchat.leaveRoom', () => leaveRoomCommand(context, chatProvider)),
-    vscode.commands.registerCommand('devchat.copyInvite', () => copyInviteCommand(context)),
+    vscode.commands.registerCommand('devchat.copyRoomCode', () => copyRoomCodeCommand()),
   );
 
   // Deep links: vscode://<publisher>.<ext>/join/CODE

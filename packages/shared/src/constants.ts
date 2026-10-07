@@ -19,7 +19,6 @@ export const TYPING_THROTTLE_MS = 1_000;
 export const TYPING_CLEAR_MS = 3_000;
 
 // Room lifecycle
-export const EMPTY_ROOM_GRACE_MIN = 15;
 export const EXPIRY_WARNING_BEFORE_MIN = 2;
 
 // Reconnect backoff (client)

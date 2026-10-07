@@ -4,7 +4,7 @@
 import type { RoomStore } from './interface';
 import { MemoryStore } from './memory';
 
-export async function getStore(emptyGraceMs: number): Promise<RoomStore> {
+export async function getStore(): Promise<RoomStore> {
   if (process.env.REDIS_URL?.trim()) {
     try {
       const { RedisStore } = await import('./redis');
@@ -15,5 +15,5 @@ export async function getStore(emptyGraceMs: number): Promise<RoomStore> {
       console.warn('[store] Redis unreachable — falling back to memory store:', (err as Error).message);
     }
   }
-  return new MemoryStore(emptyGraceMs);
+  return new MemoryStore();
 }

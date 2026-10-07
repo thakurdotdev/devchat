@@ -16,10 +16,10 @@ export async function joinRoomCommand(
 
   if (!code) {
     code = await vscode.window.showInputBox({
-      prompt: 'Enter a DevChat room code (e.g. KX7P-2MA)',
-      placeHolder: 'KX7P-2MA',
+      prompt: 'Enter a DevChat room code (e.g. H4K8-Q2MX-7D5P)',
+      placeHolder: 'H4K8-Q2MX-7D5P',
       ignoreFocusOut: true,
-      validateInput: (v) => (/^[A-Z0-9-]{3,12}$/i.test(v.trim()) ? null : 'Letters, digits and dashes only'),
+      validateInput: (v) => (/^(?:[A-HJ-KM-NP-Z2-9]{4}-[A-HJ-KM-NP-Z2-9]{3}|[A-HJ-KM-NP-Z2-9]{4}-[A-HJ-KM-NP-Z2-9]{4}-[A-HJ-KM-NP-Z2-9]{4})$/i.test(v.trim()) ? null : 'Enter a valid DevChat room code.'),
     });
     if (!code) return; // cancelled
     code = code.trim().toUpperCase();
@@ -34,9 +34,9 @@ export async function joinRoomCommand(
       void vscode.window.showErrorMessage(`DevChat: room ${code} does not exist (or expired)`);
       return;
     }
-    await saveRoom(context, code!);
+    await saveRoom(context, code!, status.name ?? '');
     await vscode.commands.executeCommand('devchat.chatView.focus');
-    chatProvider.notifyRoom(code!);
+    chatProvider.notifyRoom(code!, status.name ?? '');
     void vscode.window.showInformationMessage(`DevChat: joining room ${code}`);
   } catch (err) {
     void vscode.window.showErrorMessage(`DevChat: could not reach server — ${(err as Error).message}`);

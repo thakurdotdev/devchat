@@ -12,6 +12,9 @@ import { cspTag, nonce } from '../../utils/csp';
 export interface WebviewInitPayload {
   serverUrl: string;
   roomCode: string | null;
+  roomName: string;
+  lastRoomCode: string | null;
+  lastRoomName: string;
   identity: Identity;
 }
 
@@ -157,7 +160,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           this.enqueueNotification({ kind: 'roomEvent', author: name, preview: actionText, mentioned: false });
           break;
         }
-        case 'copyInvite': {
+        case 'copyRoomCode': {
           const code = store.roomCode;
           if (!code) break;
           await vscode.env.clipboard.writeText(code);
@@ -183,6 +186,22 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         case 'showJoin': {
           this.clearUnread();
           await vscode.commands.executeCommand('devchat.joinRoom');
+          break;
+        }
+        case 'joinRoom': {
+          this.clearUnread();
+          await vscode.commands.executeCommand('devchat.joinRoom', String(msg.code ?? ''));
+          break;
+        }
+        case 'deleteMessage': {
+          const choice = await vscode.window.showWarningMessage(
+            'Delete this message for everyone in the room?',
+            { modal: true },
+            'Delete message',
+          );
+          if (choice === 'Delete message') {
+            void this.view?.webview.postMessage({ event: 'deleteMessage', messageId: msg.messageId });
+          }
           break;
         }
         case 'saveName': {
@@ -327,7 +346,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     const identity = await getIdentity(this.context);
     const roomCode = this.pendingRoom ?? store.roomCode;
     this.pendingRoom = null;
-    await this.view.webview.postMessage({ event: 'init', serverUrl: config.serverUrl, roomCode, identity, blurGifs: config.blurGifs });
+    await this.view.webview.postMessage({
+      event: 'init', serverUrl: config.serverUrl, roomCode,
+      roomName: store.state.roomName,
+      lastRoomCode: store.state.lastRoomCode,
+      lastRoomName: store.state.lastRoomName,
+      identity, blurGifs: config.blurGifs,
+    });
   }
 
   /** Called when devchat.serverUrl or other settings change in VS Code. */
@@ -343,13 +368,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   }
 
   /** Called by create/join commands once a new room is active. */
-  notifyRoom(code: string): void {
+  notifyRoom(code: string, name = ''): void {
     this.pendingRoom = code;
     this.clearUnread();
     if (this.view) {
       void this.view.webview.postMessage({
         event: 'room',
         roomCode: code,
+        roomName: name,
         serverUrl: getConfig().serverUrl,
       });
       this.pendingRoom = null;
@@ -359,7 +385,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   /** Tell the webview to disconnect (leaveRoom command). */
   requestLeave(): void {
     this.clearUnread();
-    void this.view?.webview.postMessage({ event: 'leave' });
+    void this.view?.webview.postMessage({
+      event: 'leave',
+      lastRoomCode: store.roomCode,
+      lastRoomName: store.state.roomName,
+    });
   }
 
   /** Persist identity edits made in the webview UI. */

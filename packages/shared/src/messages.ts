@@ -12,6 +12,7 @@ const hexColor = t.String({ pattern: '^#[0-9a-fA-F]{6}$', default: '#7c5cff' });
 
 export const JoinEvent = t.Object({
   type: t.Literal('join'),
+  room: t.Optional(t.String({ minLength: 7, maxLength: 14 })),
   name: t.String({ minLength: 1, maxLength: 32 }),
   color: hexColor,
   userId: t.Optional(t.String({ maxLength: 64 })),
@@ -20,22 +21,40 @@ export const JoinEvent = t.Object({
 export const MessageEvent = t.Object({
   type: t.Literal('message'),
   text: t.String({ minLength: 1, maxLength: MAX_TEXT_LENGTH }),
+  replyToId: t.Optional(t.String({ maxLength: 128 })),
+});
+
+export const EditMessageEvent = t.Object({
+  type: t.Literal('message.edit'),
+  messageId: t.String({ minLength: 1, maxLength: 128 }),
+  text: t.String({ minLength: 1, maxLength: MAX_TEXT_LENGTH }),
+});
+
+export const DeleteMessageEvent = t.Object({
+  type: t.Literal('message.delete'),
+  messageId: t.String({ minLength: 1, maxLength: 128 }),
+});
+
+export const PinMessageEvent = t.Object({
+  type: t.Literal('message.pin'),
+  messageId: t.String({ minLength: 1, maxLength: 128 }),
+  pinned: t.Boolean(),
 });
 
 export const GifEvent = t.Object({
   type: t.Literal('gif'),
-  id: t.String(),
-  url: t.String(),
-  preview: t.String(),
-  title: t.Optional(t.String()),
+  id: t.String({ minLength: 1, maxLength: 128 }),
+  url: t.String({ minLength: 1, maxLength: 2048 }),
+  preview: t.String({ minLength: 1, maxLength: 2048 }),
+  title: t.Optional(t.String({ maxLength: 160 })),
 });
 
 export const AudioEvent = t.Object({
   type: t.Literal('audio'),
-  id: t.String(),
-  url: t.String(),
-  title: t.String(),
-  duration: t.Optional(t.Number()),
+  id: t.String({ minLength: 1, maxLength: 128 }),
+  url: t.String({ minLength: 1, maxLength: 2048 }),
+  title: t.String({ maxLength: 160 }),
+  duration: t.Optional(t.Number({ minimum: 0, maximum: 3600 })),
 });
 
 export const TypingEvent = t.Object({
@@ -55,6 +74,9 @@ export const LeaveEvent = t.Object({
 export const ClientEvent = t.Union([
   JoinEvent,
   MessageEvent,
+  EditMessageEvent,
+  DeleteMessageEvent,
+  PinMessageEvent,
   GifEvent,
   AudioEvent,
   TypingEvent,
@@ -65,6 +87,9 @@ export const ClientEvent = t.Union([
 export type ClientEventOf = Static<typeof ClientEvent>;
 export type JoinPayload = Static<typeof JoinEvent>;
 export type MessagePayload = Static<typeof MessageEvent>;
+export type EditMessagePayload = Static<typeof EditMessageEvent>;
+export type DeleteMessagePayload = Static<typeof DeleteMessageEvent>;
+export type PinMessagePayload = Static<typeof PinMessageEvent>;
 export type GifPayload = Static<typeof GifEvent>;
 export type AudioPayload = Static<typeof AudioEvent>;
 export type ReactPayload = Static<typeof ReactEvent>;

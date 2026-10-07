@@ -51,10 +51,7 @@ export class ChatSocket {
       .replace(/^https:\/\//i, 'wss://')
       .replace(/^http:\/\//i, 'ws://')
       .replace(/\/+$/, '');
-    const params: Record<string, string> = { room: this.room, name: this.identity.name, color: this.identity.color };
-    if (this.identity.id) params.userId = this.identity.id;
-    const q = new URLSearchParams(params);
-    return `${base}/ws?${q.toString()}`;
+    return `${base}/ws`;
   }
 
   connect(): void {
@@ -75,12 +72,11 @@ export class ChatSocket {
       this.attempts = 0;
       this.setStatus('connected');
       this.startHeartbeat();
-      // If the server didn't pick up query params, send an explicit join.
       this.ws?.send(JSON.stringify({
         type: 'join',
+        room: this.room,
         name: this.identity.name,
         color: this.identity.color,
-        ...(this.identity.id ? { userId: this.identity.id } : {}),
       }));
     };
 

@@ -45,26 +45,29 @@ export class RedisStore implements RoomStore {
     const now = Date.now();
     return {
       code: '', // assigned by caller before persist (see persistRoom)
+      name: opts.name,
       createdAt: now,
       expiresAt: now + opts.ttlMs,
     };
   }
 
   async saveRoom(room: Room & { hostSecret: string }) {
-    const ttlSec = Math.max(60, Math.ceil((room.expiresAt - Date.now()) / 1000));
+    const ttlSec = Math.max(1, Math.ceil((room.expiresAt - Date.now()) / 1000));
     await this.redis.hset(roomKey(room.code), {
       createdAt: String(room.createdAt),
       hostSecret: room.hostSecret,
+      name: room.name ?? '',
       expiresAt: String(room.expiresAt),
     });
-    await this.redis.expire(roomKey(room.code), ttlSec);
+    await this.expireAll(room.code, ttlSec);
   }
 
   async getRoom(code: string) {
     const raw = await this.redis.hgetall(roomKey(code));
-    if (!raw || !raw.createdAt) return null;
+    if (!raw || !raw.createdAt || Number(raw.expiresAt) <= Date.now()) return null;
     return {
       code,
+      name: raw.name || undefined,
       createdAt: Number(raw.createdAt),
       expiresAt: Number(raw.expiresAt),
       hostSecret: raw.hostSecret,
@@ -82,11 +85,6 @@ export class RedisStore implements RoomStore {
     return keys
       .filter((k) => !k.includes(':members') && !k.includes(':messages'))
       .map((k) => k.slice('room:'.length));
-  }
-
-  async touchRoom(code: string, expiresAt: number) {
-    await this.redis.hset(roomKey(code), 'expiresAt', String(expiresAt));
-    await this.expireAll(code, Math.max(60, Math.ceil((expiresAt - Date.now()) / 1000)));
   }
 
   async addMember(code: string, member: Member) {
@@ -125,6 +123,12 @@ export class RedisStore implements RoomStore {
     if (idx >= 0) await this.redis.lset(messagesKey(code), idx, JSON.stringify(msg));
   }
 
+  async deleteMessage(code: string, messageId: string) {
+    const raw = await this.redis.lrange(messagesKey(code), 0, -1);
+    const target = raw.find((json) => (JSON.parse(json) as ChatMessage).id === messageId);
+    if (target) await this.redis.lrem(messagesKey(code), 1, target);
+  }
+
   async cacheSet(key: string, value: string, ttlSec: number) {
     await this.redis.set(`cache:${key}`, value, 'EX', ttlSec);
   }
@@ -133,10 +137,23 @@ export class RedisStore implements RoomStore {
     return this.redis.get(`cache:${key}`);
   }
 
+  async consumeRateLimit(key: string, limit: number, windowMs: number) {
+    const result = await this.redis.eval(
+      `local count = redis.call('INCR', KEYS[1])\n` +
+      `if count == 1 then redis.call('PEXPIRE', KEYS[1], ARGV[1]) end\n` +
+      `local ttl = redis.call('PTTL', KEYS[1])\n` +
+      `return {count, ttl}`,
+      1,
+      `rate:${key}`,
+      String(windowMs),
+    ) as [number, number];
+    return { allowed: Number(result[0]) <= limit, retryAfterMs: Math.max(0, Number(result[1])) };
+  }
+
   /** Slide the room TTL forward so active rooms never expire mid-session. */
   private async refreshTtl(code: string) {
     const room = await this.getRoom(code);
     if (!room) return;
-    await this.expireAll(code, Math.max(60, Math.ceil((room.expiresAt - Date.now()) / 1000)));
+    await this.expireAll(code, Math.max(1, Math.ceil((room.expiresAt - Date.now()) / 1000)));
   }
 }

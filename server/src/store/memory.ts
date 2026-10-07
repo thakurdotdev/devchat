@@ -1,7 +1,6 @@
 /**
- * In-memory RoomStore — Maps + a TTL sweeper. Rooms die when:
- *  - expiresAt passes (hard cap), or
- *  - the room has 0 members for longer than the empty-grace period.
+ * In-memory RoomStore — Maps + one lightweight TTL sweeper. Rooms remain
+ * available while empty and are removed when their selected expiry passes.
  */
 import type { ChatMessage, Member, Room } from '@devchat/shared';
 import type { CreateRoomOpts, RoomStore } from './interface';
@@ -10,20 +9,16 @@ interface MemoryRoom {
   room: Room & { hostSecret: string };
   members: Map<string, Member>;
   messages: ChatMessage[];
-  /** when the room became empty (0 members); undefined while occupied */
-  emptySince?: number;
 }
 
 export class MemoryStore implements RoomStore {
   readonly kind = 'memory' as const;
   private rooms = new Map<string, MemoryRoom>();
   private cache = new Map<string, { value: string; expiresAt: number }>();
+  private rateLimits = new Map<string, { count: number; expiresAt: number }>();
   private sweeper?: ReturnType<typeof setInterval>;
 
-  constructor(
-    private emptyGraceMs: number,
-    sweepIntervalMs = 30_000,
-  ) {
+  constructor(sweepIntervalMs = 30_000) {
     this.sweeper = setInterval(() => this.sweep(), sweepIntervalMs);
     // never keep the process alive just for sweeping
     this.sweeper.unref?.();
@@ -32,12 +27,14 @@ export class MemoryStore implements RoomStore {
   stop() {
     if (this.sweeper) clearInterval(this.sweeper);
     this.cache.clear();
+    this.rateLimits.clear();
   }
 
   async createRoom(opts: CreateRoomOpts): Promise<Room> {
     const now = Date.now();
     const room: MemoryRoom['room'] = {
       code: '', // filled by caller (ids.ts) before insert; see createRoomWithCode
+      name: opts.name,
       createdAt: now,
       expiresAt: now + opts.ttlMs,
       hostSecret: opts.hostSecret,
@@ -68,23 +65,16 @@ export class MemoryStore implements RoomStore {
     return [...this.rooms.keys()];
   }
 
-  async touchRoom(code: string, expiresAt: number) {
-    const entry = this.rooms.get(code);
-    if (entry) entry.room.expiresAt = expiresAt;
-  }
-
   async addMember(code: string, member: Member) {
     const entry = this.rooms.get(code);
     if (!entry) return;
     entry.members.set(member.id, member);
-    entry.emptySince = undefined;
   }
 
   async removeMember(code: string, memberId: string) {
     const entry = this.rooms.get(code);
     if (!entry) return;
     entry.members.delete(memberId);
-    if (entry.members.size === 0) entry.emptySince = Date.now();
   }
 
   async listMembers(code: string) {
@@ -111,6 +101,12 @@ export class MemoryStore implements RoomStore {
     if (idx >= 0) entry.messages[idx] = msg;
   }
 
+  async deleteMessage(code: string, messageId: string) {
+    const entry = this.rooms.get(code);
+    if (!entry) return;
+    entry.messages = entry.messages.filter((message) => message.id !== messageId);
+  }
+
   async cacheSet(key: string, value: string, ttlSec: number) {
     this.cache.set(key, { value, expiresAt: Date.now() + ttlSec * 1000 });
   }
@@ -125,6 +121,17 @@ export class MemoryStore implements RoomStore {
     return hit.value;
   }
 
+  async consumeRateLimit(key: string, limit: number, windowMs: number) {
+    const now = Date.now();
+    let bucket = this.rateLimits.get(key);
+    if (!bucket || now >= bucket.expiresAt) {
+      bucket = { count: 0, expiresAt: now + windowMs };
+      this.rateLimits.set(key, bucket);
+    }
+    bucket.count++;
+    return { allowed: bucket.count <= limit, retryAfterMs: Math.max(0, bucket.expiresAt - now) };
+  }
+
   private sweep() {
     const now = Date.now();
     for (const [code, entry] of this.rooms) {
@@ -132,16 +139,12 @@ export class MemoryStore implements RoomStore {
         this.rooms.delete(code);
         continue;
       }
-      if (
-        entry.members.size === 0 &&
-        entry.emptySince &&
-        now - entry.emptySince > this.emptyGraceMs
-      ) {
-        this.rooms.delete(code);
-      }
     }
     for (const [key, hit] of this.cache) {
       if (now >= hit.expiresAt) this.cache.delete(key);
+    }
+    for (const [key, bucket] of this.rateLimits) {
+      if (now >= bucket.expiresAt) this.rateLimits.delete(key);
     }
   }
 }

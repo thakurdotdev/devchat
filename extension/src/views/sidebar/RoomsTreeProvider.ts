@@ -30,7 +30,10 @@ export class RoomsTreeProvider implements vscode.TreeDataProvider<Node> {
       disconnected: '$(circle-outline)',
     };
 
-    items.push(item(`Room: ${s.roomCode ?? 'none'}`, s.roomCode ? '$(comment-discussion)' : '$(plus)', s.roomCode ? undefined : 'Run "DevChat: Create Room" or "Join Room"'));
+    const roomLabel = s.roomCode
+      ? `Room: ${s.roomName || s.roomCode}`
+      : s.lastRoomCode ? `Last room: ${s.lastRoomName || s.lastRoomCode}` : 'No active room';
+    items.push(item(roomLabel, s.roomCode ? '$(comment-discussion)' : '$(plus)', s.roomCode ? `Code: ${s.roomCode}` : 'Create a room or join with a code from the chat view'));
 
     const statusLine = `${statusIcon[s.status] ?? '$(circle-outline)'} ${s.status}`;
     const minutes = s.expiresAt ? Math.max(0, Math.round((s.expiresAt - Date.now()) / 60000)) : null;

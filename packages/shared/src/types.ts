@@ -2,6 +2,8 @@
 
 export interface Room {
   code: string;
+  /** Optional display name chosen by the room creator. */
+  name?: string;
   createdAt: number;
   /** epoch ms — rooms die at this instant even if occupied (hard cap) */
   expiresAt: number;
@@ -40,8 +42,11 @@ export interface ChatMessage {
   name: string;
   color: string;
   text?: string;
+  replyTo?: { id: string; name: string; text: string };
   media?: MediaAttachment;
   createdAt: number;
+  editedAt?: number;
+  pinned?: boolean;
   reactions?: Record<string, string[]>; // emoji → memberIds
 }
 

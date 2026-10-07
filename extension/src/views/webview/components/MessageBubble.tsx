@@ -3,7 +3,7 @@ import type { ChatMessage } from '@devchat/shared';
 import { AudioPlayer } from './AudioPlayer';
 import { GifMedia } from './GifMedia';
 
-const QUICK_EMOJI = ['👍', '🚀', '😂', '❤️', '🎉', '👀'];
+const QUICK_EMOJI = ['👍', '🚀', '😂', '❤️'];
 
 interface Props {
   message: ChatMessage;
@@ -14,35 +14,45 @@ interface Props {
   onReact: (messageId: string, emoji: string) => void;
   isGifBlurred: (messageId: string) => boolean;
   onToggleGifBlur: (messageId: string) => void;
+  onReply: (message: ChatMessage) => void;
+  onEdit: (message: ChatMessage) => void;
+  onDelete: (messageId: string) => void;
+  onPin: (messageId: string, pinned: boolean) => void;
 }
 
-export function MessageBubble({ message: m, you, youId, showAuthor = true, memberName, onReact, isGifBlurred, onToggleGifBlur }: Props) {
+export function MessageBubble({
+  message: m, you, youId, showAuthor = true, memberName, onReact,
+  isGifBlurred, onToggleGifBlur, onReply, onEdit, onDelete, onPin,
+}: Props) {
   const [hover, setHover] = useState(false);
+  const [quickReactOpen, setQuickReactOpen] = useState(false);
 
   if (m.kind === 'system') {
-    return (
-      <div class="system-row">
-        <span>{m.text}</span>
-      </div>
-    );
+    return <div class="system-row"><span>{m.text}</span></div>;
   }
+  const canEdit = you && m.kind === 'text' && Date.now() - m.createdAt <= 15 * 60_000;
 
   return (
     <div
       class={`bubble-row ${you ? 'mine' : ''} ${!showAuthor ? 'consecutive' : ''}`}
       onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
+      onMouseLeave={() => { setHover(false); setQuickReactOpen(false); }}
+      onFocusIn={() => setHover(true)}
+      onFocusOut={(event) => { if (!(event.relatedTarget instanceof HTMLElement) || !event.currentTarget.contains(event.relatedTarget)) setHover(false); }}
     >
       <div class="bubble">
         {showAuthor && (
           <div class="bubble-head">
             <span class="author" style={`color:${m.color}`}>{m.name}</span>
             <span class="time">{fmtTime(m.createdAt)}</span>
+            {m.editedAt && <span class="edited-label">edited</span>}
+            {m.pinned && <span class="pinned-label" title="Pinned message"><span class="codicon codicon-pinned" /></span>}
           </div>
         )}
-
-        {m.kind === 'text' && <div class="text">{m.text}</div>}
-
+        {m.replyTo && (
+          <div class="reply-quote"><strong>{m.replyTo.name}</strong><span>{m.replyTo.text}</span></div>
+        )}
+        {m.kind === 'text' && <div class="text">{renderText(m.text ?? '')}</div>}
         {m.kind === 'gif' && m.media && (
           <GifMedia
             url={m.media.url}
@@ -52,13 +62,7 @@ export function MessageBubble({ message: m, you, youId, showAuthor = true, membe
             onToggle={() => onToggleGifBlur(m.id)}
           />
         )}
-
-        {m.kind === 'audio' && m.media && (
-          <div class="audio-msg">
-            <AudioPlayer src={m.media.url} title={m.media.title} />
-          </div>
-        )}
-
+        {m.kind === 'audio' && m.media && <div class="audio-msg"><AudioPlayer src={m.media.url} title={m.media.title} /></div>}
         {m.reactions && Object.keys(m.reactions).length > 0 && (
           <div class="reactions">
             {Object.entries(m.reactions).map(([emoji, actors]) => {
@@ -67,12 +71,7 @@ export function MessageBubble({ message: m, you, youId, showAuthor = true, membe
                 return id === youId ? `${name} (you)` : name;
               });
               return (
-                <button
-                  key={emoji}
-                  class={`reaction ${youId && actors.includes(youId) ? 'active' : ''}`}
-                  title={names.join(', ')}
-                  onClick={() => onReact(m.id, emoji)}
-                >
+                <button key={emoji} class={`reaction ${youId && actors.includes(youId) ? 'active' : ''}`} title={names.join(', ')} onClick={() => onReact(m.id, emoji)}>
                   {emoji} {actors.length}
                 </button>
               );
@@ -80,25 +79,29 @@ export function MessageBubble({ message: m, you, youId, showAuthor = true, membe
           </div>
         )}
       </div>
-
       {hover && (
-        <div class="quick-react">
-          {QUICK_EMOJI.slice(0, 4).map((e) => (
-            <button
-              key={e}
-              onClick={(ev) => {
-                ev.stopPropagation();
-                onReact(m.id, e);
-                setHover(false);
-              }}
-            >
-              {e}
-            </button>
-          ))}
+        <div class="message-actions" role="toolbar" aria-label="Message actions">
+          <button title="Reply" aria-label="Reply" onClick={() => onReply(m)}><span class="codicon codicon-reply" /></button>
+          <div class="quick-react-wrap">
+            <button title="Add reaction" aria-label="Add reaction" aria-expanded={quickReactOpen} onClick={() => setQuickReactOpen((value) => !value)}><span class="codicon codicon-smiley" /></button>
+            {quickReactOpen && <div class="quick-react">{QUICK_EMOJI.map((emoji) => <button key={emoji} title={emoji} onClick={() => { onReact(m.id, emoji); setQuickReactOpen(false); }}>{emoji}</button>)}</div>}
+          </div>
+          <button title={m.pinned ? 'Unpin message' : 'Pin message'} aria-label={m.pinned ? 'Unpin message' : 'Pin message'} onClick={() => onPin(m.id, !m.pinned)}><span class={`codicon ${m.pinned ? 'codicon-pinned' : 'codicon-pin'}`} /></button>
+          {canEdit && <button title="Edit message" aria-label="Edit message" onClick={() => onEdit(m)}><span class="codicon codicon-edit" /></button>}
+          {you && m.kind === 'text' && Date.now() - m.createdAt <= 15 * 60_000 && <button class="delete-action" title="Delete message" aria-label="Delete message" onClick={() => onDelete(m.id)}><span class="codicon codicon-trash" /></button>}
         </div>
       )}
     </div>
   );
+}
+
+function renderText(text: string) {
+  const pieces = text.split(/(```[\w+-]*\n[\s\S]*?```)/g);
+  return pieces.map((part, index) => {
+    const match = part.match(/^```([\w+-]*)\n([\s\S]*?)```$/);
+    if (!match) return <span key={index}>{part}</span>;
+    return <pre class="code-block" key={index}><code data-language={match[1] || undefined}>{match[2].replace(/\n$/, '')}</code></pre>;
+  });
 }
 
 function fmtTime(ts: number): string {
