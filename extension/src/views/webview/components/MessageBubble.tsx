@@ -50,7 +50,10 @@ export function MessageBubble({
           </div>
         )}
         {m.replyTo && (
-          <div class="reply-quote"><strong>{m.replyTo.name}</strong><span>{m.replyTo.text}</span></div>
+          <div class="reply-quote">
+            {m.replyTo.kind === 'gif' && m.replyTo.preview && <img class="reply-preview" src={m.replyTo.preview} alt="" loading="lazy" />}
+            <div class="reply-quote-copy"><strong>{m.replyTo.name}</strong><span>{m.replyTo.text}</span></div>
+          </div>
         )}
         {m.kind === 'text' && <div class="text">{renderText(m.text ?? '')}</div>}
         {m.kind === 'gif' && m.media && (

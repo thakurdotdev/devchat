@@ -70,6 +70,7 @@ function App() {
   const [showMembers, setShowMembers] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [showPinned, setShowPinned] = useState(false);
+  const [showRoomMenu, setShowRoomMenu] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [replyTarget, setReplyTarget] = useState<ChatMessage | null>(null);
   const [editingMessage, setEditingMessage] = useState<ChatMessage | null>(null);
@@ -90,6 +91,12 @@ function App() {
   youIdRef.current = youId;
   const membersRef = useRef<Member[]>(members);
   membersRef.current = members;
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (!showSearch) return;
+    searchInputRef.current?.focus();
+  }, [showSearch]);
 
   const toast = useCallback((kind: Toast['kind'], message: string) => {
     const id = Math.random();
@@ -266,6 +273,7 @@ function App() {
             setSearchQuery('');
             setShowSearch(false);
             setShowPinned(false);
+            setShowRoomMenu(false);
             if (effectiveUrl) {
               connect(effectiveUrl, msg.roomCode, identityRef.current);
             }
@@ -297,6 +305,7 @@ function App() {
           setSearchQuery('');
           setShowSearch(false);
           setShowPinned(false);
+          setShowRoomMenu(false);
           setStatus('disconnected');
           break;
       }
@@ -483,37 +492,37 @@ function App() {
           <span class="connection-state" data-status={status}>{statusLabel(status)}</span>
         </div>
         <div class="room-toolbar">
-          {timeRemaining !== null && status === 'connected' && (
-            <span class="expiry" title="Room expires automatically">
-              <span class="codicon codicon-clock" /> {timeRemaining} left
-            </span>
-          )}
+          <span class="expiry" title={timeRemaining !== null ? 'Room expires automatically' : 'Room lifetime'}>
+            <span class="codicon codicon-clock" /> {timeRemaining !== null && status === 'connected' ? `${timeRemaining} left` : statusLabel(status)}
+          </span>
           <div class="room-actions">
             <button class={`icon-btn ${showSearch ? 'media-toggle active' : ''}`} title="Search recent messages" aria-label="Search recent messages" aria-expanded={showSearch} onClick={() => { setShowSearch((value) => !value); setSearchQuery(''); }}>
               <span class="codicon codicon-search" />
             </button>
-            <button class={`icon-btn ${showPinned ? 'media-toggle active' : ''}`} title="Pinned messages" aria-label={`Pinned messages, ${pinnedCount}`} aria-expanded={showPinned} onClick={() => setShowPinned((value) => !value)}>
-              <span class="codicon codicon-pinned" />{pinnedCount > 0 && <span>{pinnedCount}</span>}
-            </button>
             <button class="icon-btn member-toggle" title="Room members" aria-label={`Room members, ${members.length} online`} aria-expanded={showMembers} onClick={() => setShowMembers((value) => !value)}>
               <span class="codicon codicon-organization" /> <span>{members.length}</span>
             </button>
-            <button
-              class={`icon-btn media-toggle ${blurGifs ? 'active' : ''}`}
-              title={`${blurGifs ? 'Disable' : 'Enable'} GIF blur`}
-              aria-label={`${blurGifs ? 'Disable' : 'Enable'} GIF blur`}
-              aria-pressed={blurGifs}
-              onClick={() => vscode.postMessage({ cmd: 'setBlurGifs', value: !blurGifs })}
-            >
-              <span class={`codicon ${blurGifs ? 'codicon-eye-closed' : 'codicon-eye'}`} />
-            </button>
-            <button class="icon-btn" title="Copy room code" aria-label="Copy room code" onClick={() => vscode.postMessage({ cmd: 'copyRoomCode' })}>
-              <span class="codicon codicon-copy" />
-            </button>
-            <button class="icon-btn leave-btn" title="Leave room" aria-label="Leave room" onClick={() => vscode.postMessage({ cmd: 'leave' })}>
-              <span class="codicon codicon-sign-out" />
+            <button class="icon-btn" title="Room options" aria-label="Room options" aria-expanded={showRoomMenu} onClick={() => setShowRoomMenu((value) => !value)}>
+              <span class="codicon codicon-ellipsis" />
             </button>
           </div>
+          {showRoomMenu && (
+            <div class="room-menu" role="menu" aria-label="Room options">
+              <button role="menuitem" onClick={() => { setShowPinned((value) => !value); setShowRoomMenu(false); }}>
+                <span class="codicon codicon-pinned" /> Pinned messages{pinnedCount > 0 && <span class="room-menu-count">{pinnedCount}</span>}
+              </button>
+              <button role="menuitem" aria-pressed={blurGifs} onClick={() => { vscode.postMessage({ cmd: 'setBlurGifs', value: !blurGifs }); setShowRoomMenu(false); }}>
+                <span class={`codicon ${blurGifs ? 'codicon-eye-closed' : 'codicon-eye'}`} /> {blurGifs ? 'Disable GIF blur' : 'Enable GIF blur'}
+              </button>
+              <button role="menuitem" onClick={() => { vscode.postMessage({ cmd: 'copyRoomCode' }); setShowRoomMenu(false); }}>
+                <span class="codicon codicon-copy" /> Copy room code
+              </button>
+              <div class="room-menu-divider" />
+              <button class="leave-menu-item" role="menuitem" onClick={() => { setShowRoomMenu(false); vscode.postMessage({ cmd: 'leave' }); }}>
+                <span class="codicon codicon-sign-out" /> Leave room
+              </button>
+            </div>
+          )}
         </div>
       </header>
 
@@ -522,7 +531,7 @@ function App() {
       {showSearch && (
         <div class="message-search">
           <span class="codicon codicon-search" />
-          <input type="search" aria-label="Search recent messages" placeholder="Search recent messages" value={searchQuery} onInput={(event) => setSearchQuery((event.target as HTMLInputElement).value)} />
+          <input ref={searchInputRef} type="search" aria-label="Search recent messages" placeholder="Search messages" value={searchQuery} onInput={(event) => setSearchQuery((event.target as HTMLInputElement).value)} />
           {searchQuery && <span class="search-count">{visibleMessages.length}</span>}
           <button class="icon-btn" title="Close search" aria-label="Close search" onClick={() => { setShowSearch(false); setSearchQuery(''); }}><span class="codicon codicon-close" /></button>
         </div>
@@ -568,7 +577,12 @@ function App() {
           onOpenAudio={() => setPicker((p) => (p === 'audio' ? null : 'audio'))}
           onClosePickers={() => setPicker(null)}
           disabled={status !== 'connected'}
-          replyTo={replyTarget ? { name: replyTarget.name, text: replyTarget.kind === 'text' ? (replyTarget.text ?? '') : replyTarget.media?.title ?? 'Shared media' } : null}
+          replyTo={replyTarget ? {
+            name: replyTarget.name,
+            text: replyTarget.kind === 'text' ? (replyTarget.text ?? '') : replyTarget.media?.title ?? 'Shared media',
+            kind: replyTarget.kind,
+            preview: replyTarget.kind === 'gif' ? replyTarget.media?.preview : undefined,
+          } : null}
           onCancelReply={() => setReplyTarget(null)}
           editText={editingMessage?.text ?? null}
           onEdit={editText}

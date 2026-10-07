@@ -246,6 +246,8 @@ export function wireWebSocket(app: WsCapableApp, store: RoomStore, config: Confi
               id: target.id,
               name: target.name,
               text: target.kind === 'text' ? (target.text ?? '') : target.media?.title ?? 'Shared media',
+              kind: target.kind,
+              ...(target.kind === 'gif' && target.media?.preview ? { preview: target.media.preview } : {}),
             };
           }
           await store.pushMessage(code, msg, config.messageHistory);

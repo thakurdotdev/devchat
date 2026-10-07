@@ -8,7 +8,7 @@ interface Props {
   onOpenAudio: () => void;
   onClosePickers?: () => void;
   disabled: boolean;
-  replyTo?: { name: string; text: string } | null;
+  replyTo?: { name: string; text: string; kind?: 'text' | 'gif' | 'audio' | 'system'; preview?: string } | null;
   onCancelReply?: () => void;
   editText?: string | null;
   onEdit?: (text: string) => void;
@@ -80,6 +80,7 @@ export function InputBar({
     <div class="input-area">
       {replyTo && !editing && (
         <div class="compose-context">
+          {replyTo.kind === 'gif' && replyTo.preview && <img class="reply-preview" src={replyTo.preview} alt="" loading="lazy" />}
           <div class="compose-context-copy"><strong>Replying to {replyTo.name}</strong><span>{replyTo.text}</span></div>
           <button class="icon-btn" title="Cancel reply" aria-label="Cancel reply" onClick={onCancelReply}><span class="codicon codicon-close" /></button>
         </div>
