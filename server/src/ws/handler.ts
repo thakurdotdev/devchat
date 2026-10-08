@@ -242,13 +242,7 @@ export function wireWebSocket(app: WsCapableApp, store: RoomStore, config: Confi
           if (payload.replyToId) {
             const target = (await store.getMessages(code)).find((item) => item.id === payload.replyToId);
             if (!target) return sendError(conn, ERROR_CODES.INVALID, 'Reply target is no longer available');
-            msg.replyTo = {
-              id: target.id,
-              name: target.name,
-              text: target.kind === 'text' ? (target.text ?? '') : target.media?.title ?? 'Shared media',
-              kind: target.kind,
-              ...(target.kind === 'gif' && target.media?.preview ? { preview: target.media.preview } : {}),
-            };
+            msg.replyTo = buildReplyTo(target);
           }
           await store.pushMessage(code, msg, config.messageHistory);
           hub.broadcast(code, { type: 'message', ...msg });
@@ -408,8 +402,34 @@ export function wireWebSocket(app: WsCapableApp, store: RoomStore, config: Confi
       reactions: {},
       media,
     };
+    const replyToId = typeof frame.replyToId === 'string' ? frame.replyToId : undefined;
+    if (replyToId) {
+      const target = (await store.getMessages(code)).find((item) => item.id === replyToId);
+      if (!target) return sendError(conn, ERROR_CODES.INVALID, 'Reply target is no longer available');
+      msg.replyTo = buildReplyTo(target);
+    }
     await store.pushMessage(code, msg, config.messageHistory);
     hub.broadcast(code, { type: kind === 'gif' ? 'gif' : 'audio', ...msg });
+  }
+
+  /** Single source of truth for reply-quote payloads (text + media replies). */
+  function buildReplyTo(target: ChatMessage): NonNullable<ChatMessage['replyTo']> {
+    const base = {
+      id: target.id,
+      name: target.name,
+      text: target.kind === 'text' ? (target.text ?? '') : target.media?.title ?? 'Shared media',
+      kind: target.kind,
+    } as NonNullable<ChatMessage['replyTo']>;
+    // GIFs: Thumbnail uses preview first, falling back to the animated url so
+    // legacy messages (stored before preview existed) still render a thumb.
+    // Audio: keep url so clients can render a sound icon / affordance.
+    if (target.kind === 'gif') {
+      if (target.media?.preview) base.preview = target.media.preview;
+      if (target.media?.url) base.url = target.media.url;
+      if (!base.preview && base.url) base.preview = base.url;
+    }
+    if (target.kind === 'audio' && target.media?.url) base.url = target.media.url;
+    return base;
   }
 
   async function handleReact(conn: Conn, payload: { messageId: string; emoji: string }) {

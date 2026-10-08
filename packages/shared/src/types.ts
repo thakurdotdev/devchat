@@ -42,7 +42,7 @@ export interface ChatMessage {
   name: string;
   color: string;
   text?: string;
-  replyTo?: { id: string; name: string; text: string; kind?: MessageKind; preview?: string };
+  replyTo?: { id: string; name: string; text: string; kind?: MessageKind; preview?: string; url?: string };
   media?: MediaAttachment;
   createdAt: number;
   editedAt?: number;

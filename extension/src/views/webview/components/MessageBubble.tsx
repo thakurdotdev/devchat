@@ -18,14 +18,17 @@ interface Props {
   onEdit: (message: ChatMessage) => void;
   onDelete: (messageId: string) => void;
   onPin: (messageId: string, pinned: boolean) => void;
+  onJumpToMessage?: (messageId: string) => void;
+  flash?: boolean;
 }
 
 export function MessageBubble({
   message: m, you, youId, showAuthor = true, memberName, onReact,
-  isGifBlurred, onToggleGifBlur, onReply, onEdit, onDelete, onPin,
+  isGifBlurred, onToggleGifBlur, onReply, onEdit, onDelete, onPin, onJumpToMessage, flash,
 }: Props) {
   const [hover, setHover] = useState(false);
   const [quickReactOpen, setQuickReactOpen] = useState(false);
+  const [replyThumbFailed, setReplyThumbFailed] = useState(false);
 
   if (m.kind === 'system') {
     return <div class="system-row"><span>{m.text}</span></div>;
@@ -34,7 +37,9 @@ export function MessageBubble({
 
   return (
     <div
-      class={`bubble-row ${you ? 'mine' : ''} ${!showAuthor ? 'consecutive' : ''}`}
+      id={`msg-${m.id}`}
+      data-message-id={m.id}
+      class={`bubble-row ${you ? 'mine' : ''} ${!showAuthor ? 'consecutive' : ''} ${flash ? 'reply-flash' : ''}`}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => { setHover(false); setQuickReactOpen(false); }}
       onFocusIn={() => setHover(true)}
@@ -49,12 +54,25 @@ export function MessageBubble({
             {m.pinned && <span class="pinned-label" title="Pinned message"><span class="codicon codicon-pinned" /></span>}
           </div>
         )}
-        {m.replyTo && (
-          <div class="reply-quote">
-            {m.replyTo.kind === 'gif' && m.replyTo.preview && <img class="reply-preview" src={m.replyTo.preview} alt="" loading="lazy" />}
-            <div class="reply-quote-copy"><strong>{m.replyTo.name}</strong><span>{m.replyTo.text}</span></div>
-          </div>
-        )}
+        {m.replyTo && (() => {
+          const thumbSrc = m.replyTo.preview ?? (m.replyTo.kind === 'gif' ? m.replyTo.url : undefined);
+          const thumb = !replyThumbFailed ? thumbSrc : undefined;
+          return (
+            <button
+              type="button"
+              class="reply-quote is-clickable"
+              title="Jump to original message"
+              aria-label={`Jump to message from ${m.replyTo.name}`}
+              onClick={(event) => { event.stopPropagation(); onJumpToMessage?.(m.replyTo!.id); }}
+            >
+              {m.replyTo.kind === 'gif' && thumb && <img class="reply-preview" src={thumb} alt="" loading="lazy" onError={() => setReplyThumbFailed(true)} />}
+              {m.replyTo.kind === 'gif' && !thumb && <span class="reply-preview-icon" aria-hidden="true"><span class="codicon codicon-file-media" /></span>}
+              {m.replyTo.kind === 'audio' && <span class="reply-preview-icon" aria-hidden="true"><span class="codicon codicon-unmute" /></span>}
+              <span class="reply-quote-copy"><strong>{m.replyTo.name}</strong><span>{m.replyTo.text}</span></span>
+              <span class="codicon codicon-arrow-up reply-jump-icon" aria-hidden="true" />
+            </button>
+          );
+        })()}
         {m.kind === 'text' && <div class="text">{renderText(m.text ?? '')}</div>}
         {m.kind === 'gif' && m.media && (
           <GifMedia

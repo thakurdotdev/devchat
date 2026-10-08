@@ -14,14 +14,20 @@ interface Props {
   onEdit: (message: ChatMessage) => void;
   onDelete: (messageId: string) => void;
   onPin: (messageId: string, pinned: boolean) => void;
+  onJumpToMessage: (messageId: string) => void;
+  flashId?: string | null;
   emptyLabel?: string;
 }
 
-export function MessageList({ messages, youId, typingIds, memberName, onReact, isGifBlurred, onToggleGifBlur, onReply, onEdit, onDelete, onPin, emptyLabel }: Props) {
+export function MessageList({ messages, youId, typingIds, memberName, onReact, isGifBlurred, onToggleGifBlur, onReply, onEdit, onDelete, onPin, onJumpToMessage, flashId, emptyLabel }: Props) {
   const listRef = useRef<HTMLDivElement | null>(null);
   const count = messages.length;
+  const flashRef = useRef<string | null>(null);
+  flashRef.current = flashId ?? null;
 
   useEffect(() => {
+    // Skip auto-scroll while a jump-flash is active so we don't yank the user back down.
+    if (flashRef.current) return;
     const el = listRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [count, typingIds.length]);
@@ -58,6 +64,8 @@ export function MessageList({ messages, youId, typingIds, memberName, onReact, i
             onEdit={onEdit}
             onDelete={onDelete}
             onPin={onPin}
+            onJumpToMessage={onJumpToMessage}
+            flash={flashId === m.id}
           />
         );
       })}

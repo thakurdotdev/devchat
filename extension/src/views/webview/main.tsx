@@ -74,6 +74,7 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [replyTarget, setReplyTarget] = useState<ChatMessage | null>(null);
   const [editingMessage, setEditingMessage] = useState<ChatMessage | null>(null);
+  const [jumpFlashId, setJumpFlashId] = useState<string | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [tick, setTick] = useState(0); // drives the expiry countdown re-render
 
@@ -394,12 +395,20 @@ function App() {
   };
   const sendGif = (g: { id: string; url: string; preview: string; title: string }) => {
     vscode.postMessage({ cmd: 'markRead' });
-    socketRef.current?.send({ type: 'gif', id: g.id, url: g.url, preview: g.preview, title: g.title });
+    socketRef.current?.send({
+      type: 'gif', id: g.id, url: g.url, preview: g.preview, title: g.title,
+      ...(replyTarget ? { replyToId: replyTarget.id } : {}),
+    });
+    if (replyTarget) setReplyTarget(null);
     setPicker(null);
   };
   const sendAudio = (s: { id: string; url: string; title: string }) => {
     vscode.postMessage({ cmd: 'markRead' });
-    socketRef.current?.send({ type: 'audio', id: s.id, url: s.url, title: s.title });
+    socketRef.current?.send({
+      type: 'audio', id: s.id, url: s.url, title: s.title,
+      ...(replyTarget ? { replyToId: replyTarget.id } : {}),
+    });
+    if (replyTarget) setReplyTarget(null);
     setPicker(null);
   };
   const react = (messageId: string, emoji: string) => {
@@ -425,6 +434,35 @@ function App() {
     },
     [members, messages, youId, identity.name],
   );
+
+  const jumpFlashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Chat-app style "tap quote to jump to original": leave any search/pinned
+  // filter so the target exists, then smooth-scroll + briefly highlight it.
+  const jumpToMessage = useCallback((messageId: string) => {
+    const exists = messages.some((m) => m.id === messageId);
+    if (!exists) {
+      toast('warn', 'Original message is no longer available');
+      return;
+    }
+    setShowPinned(false);
+    setSearchQuery('');
+    setShowSearch(false);
+    // Wait a tick for MessageList to re-render unfiltered, then scroll.
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        const el = document.getElementById(`msg-${messageId}`);
+        if (!el) {
+          toast('warn', 'Original message is no longer available');
+          return;
+        }
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setJumpFlashId(messageId);
+        if (jumpFlashTimer.current) clearTimeout(jumpFlashTimer.current);
+        jumpFlashTimer.current = setTimeout(() => setJumpFlashId(null), 1800);
+      }, 30);
+    });
+  }, [messages, toast]);
 
   const visibleMessages = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -502,27 +540,32 @@ function App() {
             <button class="icon-btn member-toggle" title="Room members" aria-label={`Room members, ${members.length} online`} aria-expanded={showMembers} onClick={() => setShowMembers((value) => !value)}>
               <span class="codicon codicon-organization" /> <span>{members.length}</span>
             </button>
-            <button class="icon-btn" title="Room options" aria-label="Room options" aria-expanded={showRoomMenu} onClick={() => setShowRoomMenu((value) => !value)}>
-              <span class="codicon codicon-ellipsis" />
-            </button>
-          </div>
-          {showRoomMenu && (
-            <div class="room-menu" role="menu" aria-label="Room options">
-              <button role="menuitem" onClick={() => { setShowPinned((value) => !value); setShowRoomMenu(false); }}>
-                <span class="codicon codicon-pinned" /> Pinned messages{pinnedCount > 0 && <span class="room-menu-count">{pinnedCount}</span>}
+            <div class="room-menu-wrap">
+              <button class="icon-btn" title="Room options" aria-label="Room options" aria-expanded={showRoomMenu} aria-haspopup="menu" onClick={() => setShowRoomMenu((value) => !value)}>
+                <span class="codicon codicon-ellipsis" />
               </button>
-              <button role="menuitem" aria-pressed={blurGifs} onClick={() => { vscode.postMessage({ cmd: 'setBlurGifs', value: !blurGifs }); setShowRoomMenu(false); }}>
-                <span class={`codicon ${blurGifs ? 'codicon-eye-closed' : 'codicon-eye'}`} /> {blurGifs ? 'Disable GIF blur' : 'Enable GIF blur'}
-              </button>
-              <button role="menuitem" onClick={() => { vscode.postMessage({ cmd: 'copyRoomCode' }); setShowRoomMenu(false); }}>
-                <span class="codicon codicon-copy" /> Copy room code
-              </button>
-              <div class="room-menu-divider" />
-              <button class="leave-menu-item" role="menuitem" onClick={() => { setShowRoomMenu(false); vscode.postMessage({ cmd: 'leave' }); }}>
-                <span class="codicon codicon-sign-out" /> Leave room
-              </button>
+              {showRoomMenu && (
+                <>
+                  <div class="room-menu-backdrop" onClick={() => setShowRoomMenu(false)} aria-hidden="true" />
+                  <div class="room-menu" role="menu" aria-label="Room options">
+                    <button role="menuitem" onClick={() => { setShowPinned((value) => !value); setShowRoomMenu(false); }}>
+                      <span class="codicon codicon-pinned" /> Pinned messages{pinnedCount > 0 && <span class="room-menu-count">{pinnedCount}</span>}
+                    </button>
+                    <button role="menuitem" aria-pressed={blurGifs} onClick={() => { vscode.postMessage({ cmd: 'setBlurGifs', value: !blurGifs }); setShowRoomMenu(false); }}>
+                      <span class={`codicon ${blurGifs ? 'codicon-eye-closed' : 'codicon-eye'}`} /> {blurGifs ? 'Disable GIF blur' : 'Enable GIF blur'}
+                    </button>
+                    <button role="menuitem" onClick={() => { vscode.postMessage({ cmd: 'copyRoomCode' }); setShowRoomMenu(false); }}>
+                      <span class="codicon codicon-copy" /> Copy room code
+                    </button>
+                    <div class="room-menu-divider" />
+                    <button class="leave-menu-item" role="menuitem" onClick={() => { setShowRoomMenu(false); vscode.postMessage({ cmd: 'leave' }); }}>
+                      <span class="codicon codicon-sign-out" /> Leave room
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
-          )}
+          </div>
         </div>
       </header>
 
@@ -549,6 +592,8 @@ function App() {
         onEdit={(message) => { setReplyTarget(null); setEditingMessage(message); }}
         onDelete={requestDelete}
         onPin={pinMessage}
+        onJumpToMessage={jumpToMessage}
+        flashId={jumpFlashId}
         emptyLabel={searchQuery ? 'No messages match your search.' : showPinned ? 'No pinned messages in this room.' : undefined}
       />
 
@@ -581,7 +626,8 @@ function App() {
             name: replyTarget.name,
             text: replyTarget.kind === 'text' ? (replyTarget.text ?? '') : replyTarget.media?.title ?? 'Shared media',
             kind: replyTarget.kind,
-            preview: replyTarget.kind === 'gif' ? replyTarget.media?.preview : undefined,
+            preview: replyTarget.kind === 'gif' ? (replyTarget.media?.preview ?? replyTarget.media?.url) : undefined,
+            url: replyTarget.media?.url,
           } : null}
           onCancelReply={() => setReplyTarget(null)}
           editText={editingMessage?.text ?? null}

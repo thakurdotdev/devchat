@@ -47,6 +47,7 @@ export const GifEvent = t.Object({
   url: t.String({ minLength: 1, maxLength: 2048 }),
   preview: t.String({ minLength: 1, maxLength: 2048 }),
   title: t.Optional(t.String({ maxLength: 160 })),
+  replyToId: t.Optional(t.String({ maxLength: 128 })),
 });
 
 export const AudioEvent = t.Object({
@@ -55,6 +56,7 @@ export const AudioEvent = t.Object({
   url: t.String({ minLength: 1, maxLength: 2048 }),
   title: t.String({ maxLength: 160 }),
   duration: t.Optional(t.Number({ minimum: 0, maximum: 3600 })),
+  replyToId: t.Optional(t.String({ maxLength: 128 })),
 });
 
 export const TypingEvent = t.Object({

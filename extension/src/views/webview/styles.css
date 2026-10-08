@@ -943,9 +943,11 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, .audio-progre
 .room-actions .icon-btn:hover { background: var(--chat-hover); }
 .member-toggle { color: var(--vscode-descriptionForeground); gap: 4px; }
 .member-toggle[aria-expanded='true'], .media-toggle.active { color: var(--vscode-textLink-foreground); background: var(--chat-hover); }
-.room-menu { position: absolute; z-index: 5; top: calc(100% + 5px); right: 0; display: flex; flex-direction: column; min-width: 172px; padding: 4px; border: 1px solid var(--chat-border); border-radius: 6px; background: var(--chat-surface); box-shadow: 0 5px 18px rgba(0, 0, 0, .28); }
+.room-menu-wrap { position: relative; display: inline-flex; }
+.room-menu { position: absolute; z-index: 20; top: calc(100% + 5px); right: 0; display: flex; flex-direction: column; min-width: 200px; padding: 4px; border: 1px solid var(--chat-border); border-radius: 6px; background: var(--chat-surface); box-shadow: 0 5px 18px rgba(0, 0, 0, .28); }
 .room-menu button { display: flex; align-items: center; gap: 8px; min-height: 30px; padding: 5px 8px; border-radius: 4px; color: var(--vscode-foreground); text-align: left; white-space: nowrap; background: transparent; }
 .room-menu button:hover { background: var(--chat-hover); }
+.room-menu-backdrop { position: fixed; inset: 0; z-index: 19; background: transparent; }
 .room-menu-count { margin-left: auto; color: var(--vscode-descriptionForeground); font-size: 10px; }
 .room-menu-divider { height: 1px; margin: 4px 2px; background: var(--chat-border); }
 .room-menu .leave-menu-item { color: var(--vscode-errorForeground, var(--vscode-foreground)); }
@@ -998,11 +1000,20 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, .audio-progre
 .quick-react-wrap { position: relative; }
 .quick-react-wrap .quick-react { position: absolute; right: 0; bottom: 27px; display: flex; gap: 2px; padding: 3px; border: 1px solid var(--chat-border); background: var(--chat-surface); }
 .quick-react-wrap .quick-react button { border-radius: 4px; }
-.reply-quote { display: flex; align-items: center; gap: 7px; min-width: 0; margin-bottom: 6px; padding: 5px 7px; border-left: 2px solid var(--vscode-textLink-foreground); color: var(--vscode-descriptionForeground); background: var(--chat-surface); font-size: 10px; }
+.reply-quote { display: flex; align-items: center; gap: 7px; min-width: 0; width: 100%; margin-bottom: 6px; padding: 5px 7px; border: 0; border-left: 2px solid var(--vscode-textLink-foreground); color: var(--vscode-descriptionForeground); background: var(--chat-surface); font-size: 10px; font-family: inherit; text-align: left; }
+.reply-quote.is-clickable { cursor: pointer; }
+.reply-quote.is-clickable:hover { background: var(--chat-hover); }
+.reply-quote.is-clickable:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 1px; }
 .reply-quote-copy { display: flex; flex: 1 1 auto; flex-direction: column; gap: 1px; min-width: 0; }
 .reply-quote strong { color: var(--vscode-foreground); font-size: 10px; }
 .reply-quote-copy span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .reply-preview { display: block; flex: 0 0 36px; width: 36px; height: 36px; border-radius: 4px; object-fit: cover; background: var(--chat-hover); }
+.reply-preview-icon { display: inline-flex; flex: 0 0 36px; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 4px; background: var(--chat-hover); color: var(--vscode-descriptionForeground); }
+.reply-preview-icon .codicon { font-size: 16px; }
+.reply-jump-icon { flex: 0 0 auto; color: var(--vscode-descriptionForeground); opacity: 0; }
+.reply-quote.is-clickable:hover .reply-jump-icon, .reply-quote.is-clickable:focus-visible .reply-jump-icon { opacity: 1; }
+.bubble-row.reply-flash .bubble { outline: 1px solid var(--vscode-textLink-foreground); animation: reply-flash 1.8s ease-out; }
+@keyframes reply-flash { 0% { background: var(--vscode-textLink-foreground, #3794ff); filter: brightness(1.5); } 40% { filter: brightness(1.15); } 100% { filter: none; } }
 .compose-context .reply-preview { flex-basis: 34px; width: 34px; height: 34px; }
 .pinned-label { color: var(--vscode-textLink-foreground); }
 .code-block { max-width: 100%; margin: 6px 0; padding: 8px; overflow-x: auto; border: 1px solid var(--chat-border); border-radius: 5px; background: var(--vscode-textCodeBlock-background, var(--chat-surface)); font-family: var(--vscode-editor-font-family, monospace); font-size: 11px; white-space: pre; }
